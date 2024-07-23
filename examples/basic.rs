@@ -1,0 +1,76 @@
+use std::thread;
+use std::time::Duration as StdDuration;
+
+use chrono::Duration;
+use rscron::{JobBuilder, Scheduler, SchedulerConfig};
+use tracing::{info, Level};
+use tracing_subscriber::FmtSubscriber;
+use uuid::Uuid;
+
+fn main() {
+    let subscriber = FmtSubscriber::builder()
+        .with_max_level(Level::TRACE)
+        .finish();
+    tracing::subscriber::set_global_default(subscriber).unwrap();
+
+    let config = SchedulerConfig::default();
+    let scheduler = Scheduler::new(config);
+
+    let repeating_uuid = Uuid::new_v4();
+    let failing_uuid: Uuid = Uuid::new_v4();
+
+    scheduler
+        .add_job(
+            JobBuilder::new()
+                .with_tag("repeating")
+                .repeating(Duration::seconds(5))
+                .build(|| info!("Repeating job")),
+        )
+        .unwrap();
+
+    scheduler
+        .add_job(
+            JobBuilder::new()
+                .with_tag("once")
+                .once()
+                .build(|| info!("Once job")),
+        )
+        .unwrap();
+
+    scheduler
+        .add_job(
+            JobBuilder::new()
+                .with_tag("limited")
+                .limited(5, Duration::seconds(5))
+                .build(|| info!("Limited job")),
+        )
+        .unwrap();
+
+    scheduler
+        .add_job(
+            JobBuilder::new()
+                .with_tag("singleton")
+                .signleton(Duration::seconds(5))
+                .build(|| info!("Signleton job")),
+        )
+        .unwrap();
+
+    scheduler
+        .add_job(
+            JobBuilder::new()
+                .with_tag("failing")
+                .once()
+                .build(|| panic!("failing job")),
+        )
+        .unwrap();
+
+    scheduler.start();
+
+    thread::sleep(StdDuration::from_secs(15));
+    scheduler.remove_job(repeating_uuid);
+
+    thread::sleep(StdDuration::from_secs(15));
+    scheduler.remove_job(failing_uuid);
+
+    scheduler.stop();
+}
