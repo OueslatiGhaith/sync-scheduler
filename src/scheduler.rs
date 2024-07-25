@@ -40,6 +40,16 @@ pub enum ScheduleMode {
     Signleton,
 }
 
+impl ScheduleMode {
+    fn should_complete(&self, runs: usize) -> bool {
+        match self {
+            ScheduleMode::Once => runs > 0,
+            ScheduleMode::Limited(limit) => runs >= *limit,
+            ScheduleMode::Repeating | ScheduleMode::Signleton => false,
+        }
+    }
+}
+
 pub struct Scheduler {
     pub jobs: Arc<RwLock<HashMap<Uuid, Arc<Mutex<Job>>>>>,
     running: Arc<RwLock<bool>>,
@@ -269,11 +279,18 @@ impl Scheduler {
         now: DateTime<Tz>,
         jobs: &HashMap<Uuid, Arc<Mutex<Job>>>,
     ) -> bool {
-        now >= job.start_time.with_timezone(&now.timezone())
-            && now.signed_duration_since(job.last_scheduled) >= job.interval
-            && !job.completed
-            && !job.is_running
-            && Self::are_dependencies_met(jobs, job)
+        let is_start_time = now >= job.start_time.with_timezone(&now.timezone());
+        let is_interval_passed = now.signed_duration_since(job.last_scheduled) >= job.interval;
+        let is_first_execution = job.executions == 0;
+        let is_completed = job.completed;
+        let is_running = job.is_running;
+        let are_dependencies_met = Self::are_dependencies_met(jobs, job);
+
+        is_start_time
+            && (is_interval_passed || is_first_execution)
+            && !is_completed
+            && !is_running
+            && are_dependencies_met
     }
 
     fn schedule_identified_jobs(
@@ -365,7 +382,9 @@ impl Scheduler {
                 JobEvent::Scheduled(uuid) => trigger_job_option!(job, on_schedule, (uuid)),
                 JobEvent::Removed(uuid) => trigger_job_option!(job, on_remove, (uuid)),
                 JobEvent::Completed(uuid) => {
-                    job.completed = true;
+                    if job.mode.should_complete(job.executions) {
+                        job.completed = true;
+                    }
                     trigger_job_option!(job, on_complete, (uuid))
                 }
             };

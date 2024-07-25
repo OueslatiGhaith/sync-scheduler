@@ -1,8 +1,8 @@
-use std::thread;
+use std::{sync::Arc, thread, time::Instant};
 
 use chrono::Duration;
 use common::{create_counter_job, create_scheduler, run_with_timeout, TEST_TIMEOUT};
-use rscron::arc_mutex;
+use rscron::{arc_mutex, JobBuilder};
 
 mod common;
 
@@ -49,17 +49,27 @@ fn test_add_job_while_running() {
         let scheduler = create_scheduler();
         let counter1 = arc_mutex!(0);
         let counter2 = arc_mutex!(0);
+        let now = Instant::now();
 
-        let job1 = create_counter_job(counter1.clone(), Duration::milliseconds(100));
+        // let job1 = create_counter_job(counter1.clone(), Duration::milliseconds(100));
+        let counter_clone = Arc::clone(&counter1);
+        let job1 = JobBuilder::default()
+            .repeating(Duration::milliseconds(100))
+            .build(move || {
+                let since = now.elapsed();
+                println!("elapsed {:?}", since);
+                let mut count = counter_clone.lock().unwrap();
+                *count += 1;
+            });
         scheduler.add_job(job1).unwrap();
 
         scheduler.start();
-        thread::sleep(std::time::Duration::from_millis(200));
+        thread::sleep(std::time::Duration::from_millis(250));
 
         let job2 = create_counter_job(counter2.clone(), Duration::milliseconds(100));
         scheduler.add_job(job2).unwrap();
 
-        thread::sleep(std::time::Duration::from_millis(200));
+        thread::sleep(std::time::Duration::from_millis(250));
         scheduler.stop();
 
         assert!(*counter1.lock().unwrap() > 1);
