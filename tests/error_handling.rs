@@ -16,7 +16,7 @@ fn test_job_panic() {
     let panic_counter_clone = Arc::clone(&panic_counter);
     let on_fail_counter_clone = Arc::clone(&on_fail_counter);
 
-    let job = JobBuilder::new()
+    let job = JobBuilder::default()
         .repeating(Duration::milliseconds(100))
         .on_fail(move |_, _| {
             let mut count = on_fail_counter_clone.lock().unwrap();
@@ -53,7 +53,7 @@ fn test_max_retries() {
 
     let attempt_counter_clone = Arc::clone(&attempt_counter);
 
-    let job = JobBuilder::new().once().build(move || {
+    let job = JobBuilder::default().once().build(move || {
         let mut count = attempt_counter_clone.lock().unwrap();
         *count += 1;
         if *count <= max_retries {

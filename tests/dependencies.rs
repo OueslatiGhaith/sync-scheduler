@@ -15,14 +15,14 @@ fn test_simple_dependency() {
     let main_executed = arc_mutex!(false);
     let main_executed_clone = Arc::clone(&main_executed);
 
-    let dep_job = JobBuilder::new().once().build(move || {
+    let dep_job = JobBuilder::default().once().build(move || {
         std::thread::sleep(std::time::Duration::from_millis(100));
         *dep_completed_clone.lock().unwrap() = true;
     });
 
     let dep_job_id = scheduler.add_job(dep_job).unwrap();
 
-    let main_job = JobBuilder::new()
+    let main_job = JobBuilder::default()
         .once()
         .depends_on(dep_job_id)
         .build(move || {
@@ -63,7 +63,7 @@ fn test_multiple_dependencies() {
         dep_job_ids.push(job_id);
     }
 
-    let main_job = JobBuilder::new()
+    let main_job = JobBuilder::default()
         .once()
         .depends_on(dep_job_ids[0])
         .depends_on(dep_job_ids[1])
@@ -97,7 +97,7 @@ fn test_dependency_chain() {
     let mut prev_job_id = None;
 
     for (i, counter) in counters.clone().into_iter().enumerate() {
-        let mut job_builder = JobBuilder::new().once();
+        let mut job_builder = JobBuilder::default().once();
         if let Some(id) = prev_job_id {
             job_builder = job_builder.depends_on(id);
         }

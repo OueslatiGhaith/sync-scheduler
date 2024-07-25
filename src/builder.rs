@@ -21,8 +21,8 @@ pub struct JobBuilder {
     hooks: JobHooks,
 }
 
-impl JobBuilder {
-    pub fn new() -> Self {
+impl Default for JobBuilder {
+    fn default() -> Self {
         Self {
             id: Uuid::new_v4(),
             tags: vec![],
@@ -40,7 +40,9 @@ impl JobBuilder {
             },
         }
     }
+}
 
+impl JobBuilder {
     pub fn with_tag<S: AsRef<str>>(mut self, tag: S) -> Self {
         self.tags.push(tag.as_ref().to_owned());
         self
@@ -105,7 +107,7 @@ impl JobBuilder {
         self
     }
 
-    pub fn build(self, task: impl Fn() -> () + Send + Sync + 'static) -> Job {
+    pub fn build(self, task: impl Fn() + Send + Sync + 'static) -> Job {
         let start_time = self
             .start_time
             .unwrap_or_else(|| self.timezone.from_utc_datetime(&Utc::now().naive_utc()));

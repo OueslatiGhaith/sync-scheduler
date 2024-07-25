@@ -21,7 +21,7 @@ fn main() {
 
     scheduler
         .add_job(
-            JobBuilder::new()
+            JobBuilder::default()
                 .with_tag("repeating")
                 .repeating(Duration::seconds(5))
                 .build(|| info!("Repeating job")),
@@ -30,7 +30,7 @@ fn main() {
 
     let once_job = scheduler
         .add_job(
-            JobBuilder::new()
+            JobBuilder::default()
                 .with_tag("once")
                 .once()
                 .build(|| info!("Once job")),
@@ -39,7 +39,7 @@ fn main() {
 
     scheduler
         .add_job(
-            JobBuilder::new()
+            JobBuilder::default()
                 .with_tag("limited")
                 .limited(5, Duration::seconds(5))
                 .depends_on(once_job)
@@ -49,7 +49,7 @@ fn main() {
 
     scheduler
         .add_job(
-            JobBuilder::new()
+            JobBuilder::default()
                 .with_tag("singleton")
                 .signleton(Duration::seconds(5))
                 .build(|| info!("Signleton job")),
@@ -58,7 +58,7 @@ fn main() {
 
     scheduler
         .add_job(
-            JobBuilder::new()
+            JobBuilder::default()
                 .with_tag("failing")
                 .once()
                 .build(|| panic!("failing job")),

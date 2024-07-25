@@ -9,7 +9,7 @@ use uuid::Uuid;
 
 use crate::scheduler::ScheduleMode;
 
-pub(crate) type JobTask = Arc<Mutex<Box<dyn Fn() -> () + Send + Sync>>>;
+pub(crate) type JobTask = Arc<Mutex<Box<dyn Fn() + Send + Sync>>>;
 
 pub struct Job {
     pub(crate) id: Uuid,
@@ -35,10 +35,12 @@ pub enum JobEvent {
     Removed(Uuid),
 }
 
+type OptionArcMutex<T> = Option<Arc<Mutex<T>>>;
+
 pub struct JobHooks {
-    pub(crate) on_start: Option<Arc<Mutex<dyn Fn(Uuid) + Send + Sync>>>,
-    pub(crate) on_complete: Option<Arc<Mutex<dyn Fn(Uuid) + Send + Sync>>>,
-    pub(crate) on_fail: Option<Arc<Mutex<dyn Fn(Uuid, String) + Send + Sync>>>,
-    pub(crate) on_schedule: Option<Arc<Mutex<dyn Fn(Uuid) + Send + Sync>>>,
-    pub(crate) on_remove: Option<Arc<Mutex<dyn Fn(Uuid) + Send + Sync>>>,
+    pub(crate) on_start: OptionArcMutex<dyn Fn(Uuid) + Send + Sync>,
+    pub(crate) on_complete: OptionArcMutex<dyn Fn(Uuid) + Send + Sync>,
+    pub(crate) on_fail: OptionArcMutex<dyn Fn(Uuid, String) + Send + Sync>,
+    pub(crate) on_schedule: OptionArcMutex<dyn Fn(Uuid) + Send + Sync>,
+    pub(crate) on_remove: OptionArcMutex<dyn Fn(Uuid) + Send + Sync>,
 }

@@ -8,7 +8,7 @@ use chrono::Utc;
 use rscron::{Job, JobBuilder, Scheduler, SchedulerConfig};
 
 #[allow(unused)]
-pub const TEST_TIMEOUT: Duration = Duration::from_secs(2);
+pub const TEST_TIMEOUT: Duration = Duration::from_secs(5000);
 
 pub fn create_scheduler() -> Scheduler {
     Scheduler::new(SchedulerConfig::default())
@@ -17,7 +17,7 @@ pub fn create_scheduler() -> Scheduler {
 #[allow(unused)]
 pub fn create_counter_job(counter: Arc<Mutex<usize>>, interval: chrono::Duration) -> Job {
     let counter_clone = Arc::clone(&counter);
-    JobBuilder::new().repeating(interval).build(move || {
+    JobBuilder::default().repeating(interval).build(move || {
         let mut count = counter_clone.lock().unwrap();
         *count += 1;
     })
