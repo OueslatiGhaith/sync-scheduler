@@ -41,7 +41,7 @@ pub enum ScheduleMode {
 }
 
 pub struct Scheduler {
-    jobs: Arc<Mutex<HashMap<Uuid, Job>>>,
+    pub jobs: Arc<Mutex<HashMap<Uuid, Job>>>,
     running: Arc<Mutex<bool>>,
     job_sender: Sender<JobExecution>,
     job_receiver: Receiver<JobExecution>,
@@ -89,17 +89,12 @@ impl Scheduler {
         }
     }
 
-    pub fn update_job(
-        &self,
-        id: Uuid,
-        new_task: impl Fn() -> () + Send + Sync + 'static,
-    ) -> Result<(), String> {
+    pub fn update_job(&self, id: Uuid, new_job: Job) -> Result<(), String> {
         trace!("Updating job with id {}", id);
 
         let mut jobs = self.jobs.lock().unwrap();
         if let Some(job) = jobs.get_mut(&id) {
-            let mut task = job.task.lock().unwrap();
-            *task = Box::new(new_task);
+            *job = new_job;
             Ok(())
         } else {
             Err(format!("Job with id {} not found", id))
