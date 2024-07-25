@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use chrono::{DateTime, Duration, TimeZone, Utc};
 use chrono_tz::Tz;
 use uuid::Uuid;
@@ -15,6 +17,7 @@ pub struct JobBuilder {
     mode: ScheduleMode,
     start_time: Option<DateTime<Tz>>,
     timezone: Tz,
+    dependencies: HashSet<Uuid>,
     hooks: JobHooks,
 }
 
@@ -27,6 +30,7 @@ impl JobBuilder {
             mode: ScheduleMode::Once,
             start_time: None,
             timezone: Tz::UTC,
+            dependencies: HashSet::new(),
             hooks: JobHooks {
                 on_start: None,
                 on_complete: None,
@@ -65,8 +69,8 @@ impl JobBuilder {
         self
     }
 
-    pub fn mode(mut self, mode: ScheduleMode) -> Self {
-        self.mode = mode;
+    pub fn depends_on(mut self, job_id: Uuid) -> Self {
+        self.dependencies.insert(job_id);
         self
     }
 
@@ -117,6 +121,8 @@ impl JobBuilder {
             is_running: false,
             start_time,
             hooks: self.hooks,
+            dependencies: self.dependencies,
+            completed: false,
         }
     }
 }

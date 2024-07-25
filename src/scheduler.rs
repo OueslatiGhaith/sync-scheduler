@@ -10,10 +10,10 @@ use crate::{
     job::{Job, JobEvent, JobTask},
     trigger_job_option,
 };
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 use chrono_tz::Tz;
 use crossbeam_channel::{unbounded, Receiver, Sender};
-use tracing::trace;
+use tracing::{trace, warn};
 use uuid::Uuid;
 
 #[derive(Clone)]
@@ -67,7 +67,7 @@ impl Scheduler {
         }
     }
 
-    pub fn add_job(&self, job: Job) -> Result<(), String> {
+    pub fn add_job(&self, job: Job) -> Result<Uuid, String> {
         trace!("Adding job with id {}", job.id);
 
         let job_id = job.id.clone();
@@ -78,7 +78,7 @@ impl Scheduler {
         jobs.insert(job.id.clone(), job);
         drop(jobs);
         Self::trigger_job_hooks(&self.jobs, &job_id, JobEvent::Scheduled(job_id));
-        Ok(())
+        Ok(job_id)
     }
 
     pub fn remove_job(&self, job_id: Uuid) {
@@ -107,105 +107,18 @@ impl Scheduler {
     }
 
     pub fn start(&self) {
-        let mut running = self.running.lock().unwrap();
-        if *running {
-            println!("Scheduler already running");
+        if !self.set_running_state(true) {
+            warn!("Scheduler already running");
             return;
         }
-        *running = true;
-        drop(running);
 
         trace!("Starting scheduler");
 
-        let jobs = Arc::clone(&self.jobs);
-        let running = Arc::clone(&self.running);
-        let job_sender = self.job_sender.clone();
-        let config = self.config.clone();
-        let running_jobs_count: Arc<Mutex<usize>> = Arc::clone(&self.running_jobs_count);
+        let scheduler_context = self.create_scheduler_context();
 
         thread::spawn(move || {
             trace!("Scheduler thread started");
-
-            while *running.lock().unwrap() {
-                let now = Utc::now().with_timezone(&config.timezone);
-                let mut job_lock = jobs.lock().unwrap();
-
-                for (id, job) in job_lock.iter_mut() {
-                    if now >= job.start_time.with_timezone(&config.timezone)
-                        && now.signed_duration_since(job.last_scheduled) >= job.interval
-                    {
-                        let running_count = *running_jobs_count.lock().unwrap();
-                        if running_count <= config.max_concurrent_jobs {
-                            match job.mode {
-                                ScheduleMode::Once if job.executions == 0 => {
-                                    trace!("Scheduling job with id {} for once", id);
-                                    Self::schedule_job(
-                                        id,
-                                        &config.timezone,
-                                        job,
-                                        &job_sender,
-                                        &running_jobs_count,
-                                    );
-                                }
-                                ScheduleMode::Repeating => {
-                                    trace!("Scheduling job with id {} for repeating", id);
-                                    Self::schedule_job(
-                                        id,
-                                        &config.timezone,
-                                        job,
-                                        &job_sender,
-                                        &running_jobs_count,
-                                    );
-                                }
-                                ScheduleMode::Limited(limit) if job.executions < limit => {
-                                    trace!(
-                                        "Scheduling job with id {} for limited with limit {}/{}",
-                                        id,
-                                        job.executions,
-                                        limit
-                                    );
-                                    Self::schedule_job(
-                                        id,
-                                        &config.timezone,
-                                        job,
-                                        &job_sender,
-                                        &running_jobs_count,
-                                    );
-                                }
-                                ScheduleMode::Signleton if !job.is_running => {
-                                    trace!("Scheduling job with id {} for singleton", id);
-                                    Self::schedule_job(
-                                        id,
-                                        &config.timezone,
-                                        job,
-                                        &job_sender,
-                                        &running_jobs_count,
-                                    );
-                                }
-                                _ => {}
-                            }
-                        } else {
-                            trace!("Max concurrent jobs reached, job {} not scheduled", id);
-                        }
-                    }
-                }
-
-                job_lock.retain(|id, job| {
-                    let retain = match job.mode {
-                        ScheduleMode::Once => job.executions == 0,
-                        ScheduleMode::Limited(limit) => job.executions < limit,
-                        _ => true,
-                    };
-                    if !retain {
-                        trace!("Removing job with id {} from scheduler", id);
-                    }
-                    retain
-                });
-
-                drop(job_lock);
-                thread::sleep(Duration::from_millis(100));
-            }
-
+            Self::run_scheduler_loop(scheduler_context);
             trace!("Scheduler thread stopped");
         });
 
@@ -278,37 +191,131 @@ impl Scheduler {
         }
     }
 
+    fn set_running_state(&self, state: bool) -> bool {
+        let mut running = self.running.lock().unwrap();
+        if *running == state {
+            return false;
+        }
+        *running = state;
+        true
+    }
+
+    fn create_scheduler_context(&self) -> SchedulerContext {
+        SchedulerContext {
+            jobs: Arc::clone(&self.jobs),
+            running: Arc::clone(&self.running),
+            job_sender: self.job_sender.clone(),
+            config: self.config.clone(),
+            running_jobs_count: Arc::clone(&self.running_jobs_count),
+        }
+    }
+
+    fn run_scheduler_loop(context: SchedulerContext) {
+        while *context.running.lock().unwrap() {
+            let now = Utc::now().with_timezone(&context.config.timezone);
+            let jobs_to_schedule = Self::identify_jobs_to_schedule(&context, now);
+            Self::schedule_identified_jobs(&context, jobs_to_schedule, now);
+            Self::remove_completed_jobs(&context);
+            thread::sleep(Duration::from_millis(100));
+        }
+    }
+
+    fn identify_jobs_to_schedule(context: &SchedulerContext, now: DateTime<Tz>) -> Vec<Uuid> {
+        let jobs_lock = context.jobs.lock().unwrap();
+        jobs_lock
+            .iter()
+            .filter(|(_, job)| Self::should_schedule_job(job, now, &jobs_lock))
+            .map(|(id, _)| *id)
+            .collect()
+    }
+
+    fn should_schedule_job(job: &Job, now: DateTime<Tz>, jobs: &HashMap<Uuid, Job>) -> bool {
+        now >= job.start_time.with_timezone(&now.timezone())
+            && now.signed_duration_since(job.last_scheduled) >= job.interval
+            && !job.completed
+            && !job.is_running
+            && Self::are_dependencies_met(jobs, job)
+    }
+
+    fn schedule_identified_jobs(
+        context: &SchedulerContext,
+        jobs_to_schedule: Vec<Uuid>,
+        now: DateTime<Tz>,
+    ) {
+        let mut jobs_lock = context.jobs.lock().unwrap();
+        let running_count = *context.running_jobs_count.lock().unwrap();
+        let available_slots = context
+            .config
+            .max_concurrent_jobs
+            .saturating_sub(running_count);
+
+        for id in jobs_to_schedule.into_iter().take(available_slots) {
+            if let Some(job) = jobs_lock.get_mut(&id) {
+                if Self::can_schedule_job(job) {
+                    Self::schedule_job(job, now, &context.job_sender, &context.running_jobs_count);
+                }
+            }
+        }
+    }
+
+    fn can_schedule_job(job: &Job) -> bool {
+        match job.mode {
+            ScheduleMode::Once if job.executions == 0 => true,
+            ScheduleMode::Repeating => true,
+            ScheduleMode::Limited(limit) if job.executions < limit => true,
+            ScheduleMode::Signleton => true,
+            _ => false,
+        }
+    }
+
+    fn remove_completed_jobs(context: &SchedulerContext) {
+        let mut jobs_lock = context.jobs.lock().unwrap();
+        jobs_lock.retain(|_, job| {
+            let retain = match job.mode {
+                ScheduleMode::Once => !job.completed,
+                ScheduleMode::Limited(limit) => job.executions < limit,
+                _ => true,
+            };
+            if !retain {
+                trace!("Removing job with id {}", job.id);
+            }
+            retain
+        });
+    }
+
     fn schedule_job(
-        id: &Uuid,
-        timezone: &Tz,
         job: &mut Job,
+        now: DateTime<Tz>,
         sender: &Sender<JobExecution>,
         running_jobs_count: &Arc<Mutex<usize>>,
     ) {
         sender
             .send(JobExecution {
-                id: id.clone(),
+                id: job.id,
                 task: Arc::clone(&job.task),
             })
             .unwrap();
-        job.last_scheduled = Utc::now().with_timezone(timezone);
+        job.last_scheduled = now;
         job.is_running = true;
 
         let mut count = running_jobs_count.lock().unwrap();
         *count += 1;
-        trace!("Job {} scheduled, Running jobs count: {}", id, *count);
+        trace!("Job {} scheduled, Running jobs count: {}", job.id, *count);
     }
 
     fn trigger_job_hooks(jobs: &Arc<Mutex<HashMap<Uuid, Job>>>, job_id: &Uuid, event: JobEvent) {
         trace!("Triggering job hooks for job with id {}", job_id);
 
-        if let Some(job) = jobs.lock().unwrap().get(&job_id) {
+        if let Some(job) = jobs.lock().unwrap().get_mut(&job_id) {
             match event {
                 JobEvent::Started(uuid) => trigger_job_option!(job, on_start, (uuid)),
-                JobEvent::Completed(uuid) => trigger_job_option!(job, on_complete, (uuid)),
                 JobEvent::Failed(uuid, err) => trigger_job_option!(job, on_fail, (uuid, err)),
                 JobEvent::Scheduled(uuid) => trigger_job_option!(job, on_schedule, (uuid)),
                 JobEvent::Removed(uuid) => trigger_job_option!(job, on_remove, (uuid)),
+                JobEvent::Completed(uuid) => {
+                    job.completed = true;
+                    trigger_job_option!(job, on_complete, (uuid))
+                }
             };
         }
     }
@@ -319,4 +326,20 @@ impl Scheduler {
         let mut running = self.running.lock().unwrap();
         *running = false;
     }
+
+    fn are_dependencies_met(jobs: &HashMap<Uuid, Job>, job: &Job) -> bool {
+        job.dependencies.iter().all(|dep_id| {
+            jobs.get(dep_id)
+                .map(|dep_job| dep_job.completed)
+                .unwrap_or(false)
+        })
+    }
+}
+
+struct SchedulerContext {
+    jobs: Arc<Mutex<HashMap<Uuid, Job>>>,
+    running: Arc<Mutex<bool>>,
+    job_sender: Sender<JobExecution>,
+    config: SchedulerConfig,
+    running_jobs_count: Arc<Mutex<usize>>,
 }

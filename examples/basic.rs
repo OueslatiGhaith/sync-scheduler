@@ -28,7 +28,7 @@ fn main() {
         )
         .unwrap();
 
-    scheduler
+    let once_job = scheduler
         .add_job(
             JobBuilder::new()
                 .with_tag("once")
@@ -42,6 +42,7 @@ fn main() {
             JobBuilder::new()
                 .with_tag("limited")
                 .limited(5, Duration::seconds(5))
+                .depends_on(once_job)
                 .build(|| info!("Limited job")),
         )
         .unwrap();

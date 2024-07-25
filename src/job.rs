@@ -1,4 +1,7 @@
-use std::sync::{Arc, Mutex};
+use std::{
+    collections::HashSet,
+    sync::{Arc, Mutex},
+};
 
 use chrono::{DateTime, Duration};
 use chrono_tz::Tz;
@@ -19,6 +22,8 @@ pub struct Job {
     pub(crate) is_running: bool,
     pub(crate) start_time: DateTime<Tz>,
     pub(crate) hooks: JobHooks,
+    pub(crate) dependencies: HashSet<Uuid>,
+    pub(crate) completed: bool,
 }
 
 #[derive(Clone)]
