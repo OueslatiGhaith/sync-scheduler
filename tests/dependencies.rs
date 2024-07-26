@@ -58,13 +58,21 @@ fn test_multiple_dependencies() {
     let mut dep_job_ids = Vec::new();
 
     for counter in &dep_counters {
-        let job = create_counter_job(counter.clone(), Duration::milliseconds(100));
+        let counter_clone = Arc::clone(counter);
+        let job = JobBuilder::default()
+            .with_tag("counter")
+            .once()
+            .build(move || {
+                let mut count = counter_clone.lock().unwrap();
+                *count += 1;
+            });
         let job_id = scheduler.add_job(job).unwrap();
         dep_job_ids.push(job_id);
     }
 
     let main_job = JobBuilder::default()
         .once()
+        .with_tag("main")
         .depends_on(dep_job_ids[0])
         .depends_on(dep_job_ids[1])
         .depends_on(dep_job_ids[2])

@@ -17,10 +17,13 @@ pub fn create_scheduler() -> Scheduler {
 #[allow(unused)]
 pub fn create_counter_job(counter: Arc<Mutex<usize>>, interval: chrono::Duration) -> Job {
     let counter_clone = Arc::clone(&counter);
-    JobBuilder::default().repeating(interval).build(move || {
-        let mut count = counter_clone.lock().unwrap();
-        *count += 1;
-    })
+    JobBuilder::default()
+        .with_tag("counter")
+        .repeating(interval)
+        .build(move || {
+            let mut count = counter_clone.lock().unwrap();
+            *count += 1;
+        })
 }
 
 #[allow(unused)]
