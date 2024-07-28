@@ -503,4 +503,19 @@ impl SchedulerHandle {
 
         Some(next_time)
     }
+
+    pub fn get_jobs_by_tag(&self, tag: &str) -> Vec<Uuid> {
+        let jobs = self.jobs.read().unwrap();
+
+        jobs.values()
+            .filter(|job| {
+                let job = job.read().unwrap();
+                job.tags.contains(&tag.to_string())
+            })
+            .map(|job| {
+                let job = job.read().unwrap();
+                job.id
+            })
+            .collect()
+    }
 }

@@ -16,7 +16,7 @@ pub(crate) type JobCondition = Arc<dyn Fn(Uuid, &SchedulerHandle) -> bool + Send
 
 pub struct Job {
     pub(crate) id: Uuid,
-    pub(crate) _tags: Vec<String>,
+    pub(crate) tags: Vec<String>,
     pub(crate) interval: Duration,
     pub(crate) task: JobTask,
     pub(crate) last_scheduled: DateTime<Utc>,

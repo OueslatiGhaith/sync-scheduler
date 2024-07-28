@@ -121,7 +121,7 @@ impl JobBuilder {
 
         Job {
             id: self.id,
-            _tags: self.tags,
+            tags: self.tags,
             interval: self.interval,
             task: arc_mutex_box!(task),
             last_scheduled: Utc::now(),
