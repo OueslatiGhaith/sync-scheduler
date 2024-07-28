@@ -5,4 +5,4 @@ mod scheduler;
 
 pub use builder::JobBuilder;
 pub use job::Job;
-pub use scheduler::{ScheduleMode, Scheduler, SchedulerConfig};
+pub use scheduler::{ScheduleMode, Scheduler, SchedulerConfig, SchedulerHandle};
