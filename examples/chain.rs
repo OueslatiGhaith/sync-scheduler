@@ -12,7 +12,9 @@ fn make_repeating_job(update_counter: Arc<Mutex<usize>>) -> Job {
         .repeating(Duration::seconds(5))
         .build(move |_, _| {
             let counter = *update_counter.lock().unwrap();
-            info!("[{rand_id}] repeating job updated {counter} times",)
+            info!("[{rand_id}] repeating job updated {counter} times");
+
+            Ok(())
         })
 }
 
@@ -42,7 +44,9 @@ fn main() {
                 // adding a new job to the scheduler
                 let once_job = JobBuilder::default().once().build(move |_, _| {
                     let counter = *update_counter_clone2.lock().unwrap();
-                    info!("inner once job ran {counter} times")
+                    info!("inner once job ran {counter} times");
+
+                    Ok(())
                 });
                 scheduler.add_job(once_job).unwrap();
 
@@ -53,6 +57,8 @@ fn main() {
 
                 let new_job = make_repeating_job(update_counter_clone3);
                 scheduler.update_job(repeating_job_id, new_job).unwrap();
+
+                Ok(())
             });
 
     scheduler.add_job(repeating_job).unwrap();

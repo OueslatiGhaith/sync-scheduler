@@ -18,6 +18,8 @@ fn test_simple_dependency() {
     let dep_job = JobBuilder::default().once().build(move |_, _| {
         std::thread::sleep(std::time::Duration::from_millis(100));
         *dep_completed_clone.lock().unwrap() = true;
+
+        Ok(())
     });
 
     let dep_job_id = scheduler.add_job(dep_job).unwrap();
@@ -31,6 +33,8 @@ fn test_simple_dependency() {
                 "Dependency should be completed before main job runs"
             );
             *main_executed_clone.lock().unwrap() = true;
+
+            Ok(())
         });
 
     scheduler.add_job(main_job).unwrap();
@@ -67,6 +71,8 @@ fn test_multiple_dependencies() {
             .build(move |_, _| {
                 let mut count = counter_clone.lock().unwrap();
                 *count += 1;
+
+                Ok(())
             });
         let job_id = scheduler.add_job(job).unwrap();
         dep_job_ids.push(job_id);
@@ -86,6 +92,8 @@ fn test_multiple_dependencies() {
                 );
             }
             *main_executed_clone.lock().unwrap() = true;
+
+            Ok(())
         });
 
     scheduler.add_job(main_job).unwrap();
@@ -115,6 +123,8 @@ fn test_dependency_chain() {
             std::thread::sleep(std::time::Duration::from_millis(100));
             let mut count = counter.lock().unwrap();
             *count = i + 1;
+
+            Ok(())
         });
 
         let job_id = scheduler.add_job(job).unwrap();

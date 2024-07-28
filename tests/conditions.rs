@@ -14,7 +14,10 @@ fn test_job_with_single_condition() {
             let job_guard = job.read().unwrap();
             job_guard.executions() < 1
         })
-        .build(|uuid, _| println!("Job {uuid} executed"));
+        .build(|uuid, _| {
+            println!("Job {uuid} executed");
+            Ok(())
+        });
 
     let job_id = scheduler.add_job(job).unwrap();
 

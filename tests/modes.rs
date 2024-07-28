@@ -15,6 +15,8 @@ fn test_once_mode() {
     let job = JobBuilder::default().once().build(move |_, _| {
         let mut count = counter_clone.lock().unwrap();
         *count += 1;
+
+        Ok(())
     });
 
     scheduler.add_job(job).unwrap();
@@ -51,6 +53,8 @@ fn test_limited_mode() {
         .build(move |_, _| {
             let mut count = counter_clone.lock().unwrap();
             *count += 1;
+
+            Ok(())
         });
 
     scheduler.add_job(job).unwrap();

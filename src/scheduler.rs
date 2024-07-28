@@ -217,14 +217,24 @@ impl SchedulerHandle {
                 drop(jobs_lock);
 
                 match result {
-                    Ok(_) => {
-                        trace!("Job with id {} completed", job_exec.id);
-                        Self::trigger_job_hooks(
-                            jobs.clone(),
-                            &job_exec.id,
-                            JobEvent::Completed(job_exec.id),
-                        );
-                    }
+                    Ok(result) => match result {
+                        Ok(_) => {
+                            trace!("Job with id {} completed", job_exec.id);
+                            Self::trigger_job_hooks(
+                                jobs.clone(),
+                                &job_exec.id,
+                                JobEvent::Completed(job_exec.id),
+                            );
+                        }
+                        Err(err) => {
+                            trace!("Job with id {} failed", job_exec.id);
+                            Self::trigger_job_hooks(
+                                jobs.clone(),
+                                &job_exec.id,
+                                JobEvent::Failed(job_exec.id, err),
+                            );
+                        }
+                    },
                     Err(e) => {
                         let error_msg = if let Some(s) = e.downcast_ref::<String>() {
                             s.clone()
@@ -241,7 +251,7 @@ impl SchedulerHandle {
                         Self::trigger_job_hooks(
                             jobs.clone(),
                             &job_exec.id,
-                            JobEvent::Failed(job_exec.id, error_msg),
+                            JobEvent::Panicked(job_exec.id, error_msg),
                         );
                     }
                 }
@@ -384,6 +394,7 @@ impl SchedulerHandle {
                     })
                 }
                 JobEvent::Failed(uuid, err) => trigger_job_option!(job, on_fail, (uuid, err)),
+                JobEvent::Panicked(uuid, err) => trigger_job_option!(job, on_panic, (uuid, err)),
                 JobEvent::Scheduled(uuid) => trigger_job_option!(job, on_schedule, (uuid)),
                 JobEvent::Removed(uuid) => trigger_job_option!(job, on_remove, (uuid)),
                 JobEvent::Completed(uuid) => {

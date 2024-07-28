@@ -1,4 +1,4 @@
-use std::{collections::HashSet, sync::Arc};
+use std::{collections::HashSet, error::Error, sync::Arc};
 
 use chrono::{DateTime, Duration, TimeZone, Utc};
 use uuid::Uuid;
@@ -34,6 +34,7 @@ impl Default for JobBuilder {
                 on_start: None,
                 on_complete: None,
                 on_fail: None,
+                on_panic: None,
                 on_schedule: None,
                 on_remove: None,
             },
@@ -84,8 +85,16 @@ impl JobBuilder {
         self
     }
 
-    pub fn on_fail(mut self, on_fail: impl Fn(Uuid, String) + Send + Sync + 'static) -> Self {
+    pub fn on_fail(
+        mut self,
+        on_fail: impl Fn(Uuid, Box<dyn Error>) + Send + Sync + 'static,
+    ) -> Self {
         self.hooks.on_fail = Some(arc_mutex_box!(on_fail));
+        self
+    }
+
+    pub fn on_panic(mut self, on_panic: impl Fn(Uuid, String) + Send + Sync + 'static) -> Self {
+        self.hooks.on_panic = Some(arc_mutex_box!(on_panic));
         self
     }
 
@@ -107,7 +116,10 @@ impl JobBuilder {
         self
     }
 
-    pub fn build(self, task: impl Fn(Uuid, &SchedulerHandle) + Send + Sync + 'static) -> Job {
+    pub fn build(
+        self,
+        task: impl Fn(Uuid, &SchedulerHandle) -> Result<(), Box<dyn Error>> + Send + Sync + 'static,
+    ) -> Job {
         let start_time = self.start_time.unwrap_or_else(Utc::now);
 
         Job {

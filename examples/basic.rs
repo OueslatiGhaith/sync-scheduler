@@ -24,17 +24,18 @@ fn main() {
             JobBuilder::default()
                 .with_tag("repeating")
                 .repeating(Duration::seconds(5))
-                .build(|_, _| info!("Repeating job")),
+                .build(|_, _| {
+                    info!("Repeating job");
+                    Ok(())
+                }),
         )
         .unwrap();
 
     let once_job = scheduler
-        .add_job(
-            JobBuilder::default()
-                .with_tag("once")
-                .once()
-                .build(|_, _| info!("Once job")),
-        )
+        .add_job(JobBuilder::default().with_tag("once").once().build(|_, _| {
+            info!("Once job");
+            Ok(())
+        }))
         .unwrap();
 
     scheduler
@@ -43,7 +44,10 @@ fn main() {
                 .with_tag("limited")
                 .limited(5, Duration::seconds(5))
                 .depends_on(once_job)
-                .build(|_, _| info!("Limited job")),
+                .build(|_, _| {
+                    info!("Limited job");
+                    Ok(())
+                }),
         )
         .unwrap();
 

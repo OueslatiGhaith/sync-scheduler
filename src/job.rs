@@ -1,5 +1,6 @@
 use std::{
     collections::HashSet,
+    error::Error,
     sync::{Arc, Mutex},
 };
 
@@ -8,7 +9,8 @@ use uuid::Uuid;
 
 use crate::scheduler::{ScheduleMode, SchedulerHandle};
 
-pub(crate) type JobTask = Arc<Mutex<Box<dyn Fn(Uuid, &SchedulerHandle) + Send + Sync>>>;
+pub(crate) type JobTask =
+    Arc<Mutex<Box<dyn Fn(Uuid, &SchedulerHandle) -> Result<(), Box<dyn Error>> + Send + Sync>>>;
 pub(crate) type JobCondition = Arc<dyn Fn(Uuid, &SchedulerHandle) -> bool + Send + Sync>;
 
 pub struct Job {
@@ -65,11 +67,11 @@ impl Job {
     }
 }
 
-#[derive(Clone)]
 pub enum JobEvent {
     Started(Uuid),
     Completed(Uuid),
-    Failed(Uuid, String),
+    Failed(Uuid, Box<dyn Error>),
+    Panicked(Uuid, String),
     Scheduled(Uuid),
     Removed(Uuid),
 }
@@ -79,7 +81,8 @@ type OptionArcMutex<T> = Option<Arc<Mutex<T>>>;
 pub struct JobHooks {
     pub(crate) on_start: OptionArcMutex<dyn Fn(Uuid) + Send + Sync>,
     pub(crate) on_complete: OptionArcMutex<dyn Fn(Uuid) + Send + Sync>,
-    pub(crate) on_fail: OptionArcMutex<dyn Fn(Uuid, String) + Send + Sync>,
+    pub(crate) on_fail: OptionArcMutex<dyn Fn(Uuid, Box<dyn Error>) + Send + Sync>,
+    pub(crate) on_panic: OptionArcMutex<dyn Fn(Uuid, String) + Send + Sync>,
     pub(crate) on_schedule: OptionArcMutex<dyn Fn(Uuid) + Send + Sync>,
     pub(crate) on_remove: OptionArcMutex<dyn Fn(Uuid) + Send + Sync>,
 }

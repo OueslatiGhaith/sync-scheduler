@@ -60,6 +60,8 @@ fn test_add_job_while_running() {
                 println!("elapsed {:?}", since);
                 let mut count = counter_clone.lock().unwrap();
                 *count += 1;
+
+                Ok(())
             });
         scheduler.add_job(job1).unwrap();
 

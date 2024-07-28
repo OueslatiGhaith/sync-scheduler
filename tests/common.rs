@@ -23,6 +23,8 @@ pub fn create_counter_job(counter: Arc<Mutex<usize>>, interval: chrono::Duration
         .build(move |_, _| {
             let mut count = counter_clone.lock().unwrap();
             *count += 1;
+
+            Ok(())
         })
 }
 
