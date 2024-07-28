@@ -8,7 +8,7 @@ use chrono::Utc;
 use rscron::{Job, JobBuilder, Scheduler, SchedulerConfig};
 
 #[allow(unused)]
-pub const TEST_TIMEOUT: Duration = Duration::from_secs(5000);
+pub const TEST_TIMEOUT: Duration = Duration::from_secs(5);
 
 pub fn create_scheduler() -> Scheduler {
     Scheduler::new(SchedulerConfig::default())

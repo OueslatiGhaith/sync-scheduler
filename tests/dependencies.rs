@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use chrono::Utc;
 use common::create_scheduler;
 use rscron::{arc_mutex, JobBuilder};
 
@@ -56,10 +57,12 @@ fn test_multiple_dependencies() {
 
     let mut dep_job_ids = Vec::new();
 
+    let now = Utc::now();
     for counter in &dep_counters {
         let counter_clone = Arc::clone(counter);
         let job = JobBuilder::default()
             .with_tag("counter")
+            .start_time(now)
             .once()
             .build(move |_, _| {
                 let mut count = counter_clone.lock().unwrap();

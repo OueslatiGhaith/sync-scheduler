@@ -1,12 +1,11 @@
-use std::collections::HashSet;
+use std::{collections::HashSet, sync::Arc};
 
 use chrono::{DateTime, Duration, TimeZone, Utc};
-use chrono_tz::Tz;
 use uuid::Uuid;
 
 use crate::{
     arc_mutex_box,
-    job::{Job, JobHooks},
+    job::{Job, JobCondition, JobHooks},
     scheduler::{ScheduleMode, SchedulerHandle},
 };
 
@@ -15,22 +14,22 @@ pub struct JobBuilder {
     tags: Vec<String>,
     interval: Duration,
     mode: ScheduleMode,
-    start_time: Option<DateTime<Tz>>,
-    timezone: Tz,
+    start_time: Option<DateTime<Utc>>,
     dependencies: HashSet<Uuid>,
     hooks: JobHooks,
+    conditions: Vec<JobCondition>,
 }
 
 impl Default for JobBuilder {
     fn default() -> Self {
         Self {
             id: Uuid::new_v4(),
-            tags: vec![],
+            tags: Vec::new(),
             interval: Duration::seconds(10),
             mode: ScheduleMode::Once,
             start_time: None,
-            timezone: Tz::UTC,
             dependencies: HashSet::new(),
+            conditions: Vec::new(),
             hooks: JobHooks {
                 on_start: None,
                 on_complete: None,
@@ -65,20 +64,13 @@ impl JobBuilder {
         self
     }
 
-    pub fn signleton(mut self, interval: Duration) -> Self {
-        self.mode = ScheduleMode::Signleton;
-        self.interval = interval;
-        self
-    }
-
     pub fn depends_on(mut self, job_id: Uuid) -> Self {
         self.dependencies.insert(job_id);
         self
     }
 
-    pub fn start_time(mut self, start_time: DateTime<Tz>) -> Self {
-        self.start_time = Some(start_time);
-        self.timezone = start_time.timezone();
+    pub fn start_time<T: TimeZone>(mut self, start_time: DateTime<T>) -> Self {
+        self.start_time = Some(start_time.to_utc());
         self
     }
 
@@ -107,17 +99,23 @@ impl JobBuilder {
         self
     }
 
+    pub fn add_condition(
+        mut self,
+        condition: impl Fn(Uuid, &SchedulerHandle) -> bool + Send + Sync + 'static,
+    ) -> Self {
+        self.conditions.push(Arc::new(condition));
+        self
+    }
+
     pub fn build(self, task: impl Fn(Uuid, &SchedulerHandle) + Send + Sync + 'static) -> Job {
-        let start_time = self
-            .start_time
-            .unwrap_or_else(|| self.timezone.from_utc_datetime(&Utc::now().naive_utc()));
+        let start_time = self.start_time.unwrap_or_else(Utc::now);
 
         Job {
             id: self.id,
             _tags: self.tags,
             interval: self.interval,
             task: arc_mutex_box!(task),
-            last_scheduled: self.timezone.from_utc_datetime(&Utc::now().naive_utc()),
+            last_scheduled: Utc::now(),
             mode: self.mode,
             executions: 0,
             is_running: false,
@@ -125,6 +123,7 @@ impl JobBuilder {
             hooks: self.hooks,
             dependencies: self.dependencies,
             completed: false,
+            conditions: self.conditions,
         }
     }
 }

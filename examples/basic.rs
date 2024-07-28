@@ -50,15 +50,6 @@ fn main() {
     scheduler
         .add_job(
             JobBuilder::default()
-                .with_tag("singleton")
-                .signleton(Duration::seconds(5))
-                .build(|_, _| info!("Signleton job")),
-        )
-        .unwrap();
-
-    scheduler
-        .add_job(
-            JobBuilder::default()
                 .with_tag("failing")
                 .once()
                 .build(|_, _| panic!("failing job")),

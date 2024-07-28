@@ -11,14 +11,12 @@ use crate::{
     trigger_job_option,
 };
 use chrono::{DateTime, Utc};
-use chrono_tz::Tz;
 use crossbeam_channel::{unbounded, Receiver, Sender};
 use tracing::{trace, warn};
 use uuid::Uuid;
 
 #[derive(Clone)]
 pub struct SchedulerConfig {
-    pub timezone: Tz,
     pub max_concurrent_jobs: usize,
     pub thread_pool_size: usize,
 }
@@ -26,18 +24,17 @@ pub struct SchedulerConfig {
 impl Default for SchedulerConfig {
     fn default() -> Self {
         Self {
-            timezone: Tz::UTC,
             max_concurrent_jobs: num_cpus::get(),
             thread_pool_size: num_cpus::get(),
         }
     }
 }
 
+#[derive(Clone, Copy)]
 pub enum ScheduleMode {
     Once,
     Repeating,
     Limited(usize),
-    Signleton,
 }
 
 impl ScheduleMode {
@@ -45,7 +42,7 @@ impl ScheduleMode {
         match self {
             ScheduleMode::Once => runs > 0,
             ScheduleMode::Limited(limit) => runs >= *limit,
-            ScheduleMode::Repeating | ScheduleMode::Signleton => false,
+            ScheduleMode::Repeating => false,
         }
     }
 }
@@ -55,7 +52,7 @@ pub struct Scheduler {
 }
 
 pub struct SchedulerHandle {
-    pub jobs: Arc<RwLock<HashMap<Uuid, Arc<Mutex<Job>>>>>,
+    pub jobs: Arc<RwLock<HashMap<Uuid, Arc<RwLock<Job>>>>>,
     running: Arc<RwLock<bool>>,
     job_sender: Sender<JobExecution>,
     job_receiver: Receiver<JobExecution>,
@@ -66,11 +63,12 @@ pub struct SchedulerHandle {
 }
 
 struct SchedulerContext {
-    jobs: Arc<RwLock<HashMap<Uuid, Arc<Mutex<Job>>>>>,
+    jobs: Arc<RwLock<HashMap<Uuid, Arc<RwLock<Job>>>>>,
     running: Arc<RwLock<bool>>,
     job_sender: Sender<JobExecution>,
     config: SchedulerConfig,
     running_jobs_count: Arc<RwLock<usize>>,
+    scheduler: Arc<SchedulerHandle>,
 }
 
 struct JobExecution {
@@ -95,8 +93,12 @@ impl Scheduler {
         }
     }
 
-    pub fn jobs(&self) -> std::sync::RwLockReadGuard<HashMap<Uuid, Arc<Mutex<Job>>>> {
+    pub fn jobs(&self) -> std::sync::RwLockReadGuard<HashMap<Uuid, Arc<RwLock<Job>>>> {
         self.inner.jobs()
+    }
+
+    pub fn get_job(&self, id: Uuid) -> Option<Arc<RwLock<Job>>> {
+        self.inner.get_job(id)
     }
 
     pub fn add_job(&self, job: Job) -> Result<Uuid, String> {
@@ -123,7 +125,7 @@ impl Scheduler {
 
         trace!("Starting scheduler");
 
-        let scheduler_context = self.inner.create_scheduler_context();
+        let scheduler_context = self.create_scheduler_context();
 
         let mut scheduler_thread_guard = self.inner.scheduler_thread.lock().unwrap();
         *scheduler_thread_guard = Some(thread::spawn(move || {
@@ -155,6 +157,17 @@ impl Scheduler {
             }));
         }
     }
+
+    fn create_scheduler_context(&self) -> SchedulerContext {
+        SchedulerContext {
+            jobs: Arc::clone(&self.inner.jobs),
+            running: Arc::clone(&self.inner.running),
+            job_sender: self.inner.job_sender.clone(),
+            config: self.inner.config.clone(),
+            running_jobs_count: Arc::clone(&self.inner.running_jobs_count),
+            scheduler: Arc::clone(&self.inner),
+        }
+    }
 }
 
 impl SchedulerHandle {
@@ -167,20 +180,11 @@ impl SchedulerHandle {
         true
     }
 
-    fn create_scheduler_context(&self) -> SchedulerContext {
-        SchedulerContext {
-            jobs: Arc::clone(&self.jobs),
-            running: Arc::clone(&self.running),
-            job_sender: self.job_sender.clone(),
-            config: self.config.clone(),
-            running_jobs_count: Arc::clone(&self.running_jobs_count),
-        }
-    }
-
     fn run_scheduler_loop(context: SchedulerContext) {
         while *context.running.read().unwrap() {
-            let now = Utc::now().with_timezone(&context.config.timezone);
-            let jobs_to_schedule = Self::identify_jobs_to_schedule(&context, now);
+            let now = Utc::now();
+            let jobs_to_schedule =
+                Self::identify_jobs_to_schedule(&context, now, context.scheduler.clone());
             Self::schedule_identified_jobs(&context, jobs_to_schedule, now);
             Self::remove_completed_jobs(&context);
             thread::sleep(Duration::from_millis(100));
@@ -190,7 +194,7 @@ impl SchedulerHandle {
     fn run_worker_loop(
         job_receiver: Receiver<JobExecution>,
         running: Arc<RwLock<bool>>,
-        jobs: Arc<RwLock<HashMap<Uuid, Arc<Mutex<Job>>>>>,
+        jobs: Arc<RwLock<HashMap<Uuid, Arc<RwLock<Job>>>>>,
         running_jobs_count: Arc<RwLock<usize>>,
         scheduler: Arc<SchedulerHandle>,
     ) {
@@ -206,7 +210,7 @@ impl SchedulerHandle {
 
                 let jobs_lock = jobs.read().unwrap();
                 if let Some(job) = jobs_lock.get(&job_exec.id) {
-                    let mut job = job.lock().unwrap();
+                    let mut job = job.write().unwrap();
                     job.executions += 1;
                     job.is_running = false;
                 }
@@ -248,13 +252,17 @@ impl SchedulerHandle {
         }
     }
 
-    fn identify_jobs_to_schedule(context: &SchedulerContext, now: DateTime<Tz>) -> Vec<Uuid> {
+    fn identify_jobs_to_schedule(
+        context: &SchedulerContext,
+        now: DateTime<Utc>,
+        scheduler: Arc<SchedulerHandle>,
+    ) -> Vec<Uuid> {
         let jobs_read = context.jobs.read().unwrap();
         jobs_read
             .iter()
             .filter(|(_, job)| {
-                let job = job.lock().unwrap();
-                Self::should_schedule_job(&job, now, &jobs_read)
+                let job = job.read().unwrap();
+                Self::should_schedule_job(&job, now, &jobs_read, scheduler.clone())
             })
             .map(|(id, _)| *id)
             .collect()
@@ -262,8 +270,9 @@ impl SchedulerHandle {
 
     fn should_schedule_job(
         job: &Job,
-        now: DateTime<Tz>,
-        jobs: &HashMap<Uuid, Arc<Mutex<Job>>>,
+        now: DateTime<Utc>,
+        jobs: &HashMap<Uuid, Arc<RwLock<Job>>>,
+        scheduler: Arc<SchedulerHandle>,
     ) -> bool {
         let is_start_time = now >= job.start_time.with_timezone(&now.timezone());
         let is_interval_passed = now.signed_duration_since(job.last_scheduled) >= job.interval;
@@ -271,18 +280,23 @@ impl SchedulerHandle {
         let is_completed = job.completed;
         let is_running = job.is_running;
         let are_dependencies_met = Self::are_dependencies_met(jobs, job);
+        let are_conditions_met = job
+            .conditions
+            .iter()
+            .all(|condition| condition(job.id, &scheduler));
 
         is_start_time
             && (is_interval_passed || is_first_execution)
             && !is_completed
             && !is_running
             && are_dependencies_met
+            && are_conditions_met
     }
 
     fn schedule_identified_jobs(
         context: &SchedulerContext,
         jobs_to_schedule: Vec<Uuid>,
-        now: DateTime<Tz>,
+        now: DateTime<Utc>,
     ) {
         let running_count = *context.running_jobs_count.read().unwrap();
         let available_slots = context
@@ -293,7 +307,7 @@ impl SchedulerHandle {
 
         for id in jobs_to_schedule.into_iter().take(available_slots) {
             if let Some(job) = jobs_read.get(&id) {
-                let mut job = job.lock().unwrap();
+                let mut job = job.write().unwrap();
                 if Self::can_schedule_job(&job) {
                     Self::schedule_job(
                         &mut job,
@@ -311,7 +325,6 @@ impl SchedulerHandle {
             ScheduleMode::Once if job.executions == 0 => true,
             ScheduleMode::Repeating => true,
             ScheduleMode::Limited(limit) if job.executions < limit => true,
-            ScheduleMode::Signleton => true,
             _ => false,
         }
     }
@@ -319,7 +332,7 @@ impl SchedulerHandle {
     fn remove_completed_jobs(context: &SchedulerContext) {
         let mut jobs_lock = context.jobs.write().unwrap();
         jobs_lock.retain(|_, job| {
-            let job = job.lock().unwrap();
+            let job = job.read().unwrap();
             let retain = match job.mode {
                 ScheduleMode::Once => !job.completed,
                 ScheduleMode::Limited(limit) => job.executions < limit,
@@ -334,7 +347,7 @@ impl SchedulerHandle {
 
     fn schedule_job(
         job: &mut Job,
-        now: DateTime<Tz>,
+        now: DateTime<Utc>,
         sender: &Sender<JobExecution>,
         running_jobs_count: &Arc<RwLock<usize>>,
     ) {
@@ -353,7 +366,7 @@ impl SchedulerHandle {
     }
 
     fn trigger_job_hooks(
-        jobs: Arc<RwLock<HashMap<Uuid, Arc<Mutex<Job>>>>>,
+        jobs: Arc<RwLock<HashMap<Uuid, Arc<RwLock<Job>>>>>,
         job_id: &Uuid,
         event: JobEvent,
     ) {
@@ -361,9 +374,15 @@ impl SchedulerHandle {
 
         let jobs_read = jobs.read().unwrap();
         if let Some(job) = jobs_read.get(job_id) {
-            let mut job = job.lock().unwrap();
+            let mut job = job.write().unwrap();
             match event {
-                JobEvent::Started(uuid) => trigger_job_option!(job, on_start, (uuid)),
+                JobEvent::Started(uuid) => {
+                    // trigger_job_option!(job, on_start, (uuid))
+                    job.hooks.on_start.as_ref().map(|h| {
+                        let lock = h.lock().unwrap();
+                        (*lock)(uuid)
+                    })
+                }
                 JobEvent::Failed(uuid, err) => trigger_job_option!(job, on_fail, (uuid, err)),
                 JobEvent::Scheduled(uuid) => trigger_job_option!(job, on_schedule, (uuid)),
                 JobEvent::Removed(uuid) => trigger_job_option!(job, on_remove, (uuid)),
@@ -377,18 +396,24 @@ impl SchedulerHandle {
         }
     }
 
-    fn are_dependencies_met(jobs: &HashMap<Uuid, Arc<Mutex<Job>>>, job: &Job) -> bool {
+    fn are_dependencies_met(jobs: &HashMap<Uuid, Arc<RwLock<Job>>>, job: &Job) -> bool {
         job.dependencies.iter().all(|dep_id| {
             jobs.get(dep_id)
-                .map(|dep_job| dep_job.lock().unwrap().completed)
+                .map(|dep_job| dep_job.read().unwrap().completed)
                 .unwrap_or(false)
         })
     }
 }
 
 impl SchedulerHandle {
-    pub fn jobs(&self) -> std::sync::RwLockReadGuard<HashMap<Uuid, Arc<Mutex<Job>>>> {
+    pub fn jobs(&self) -> std::sync::RwLockReadGuard<HashMap<Uuid, Arc<RwLock<Job>>>> {
         self.jobs.read().unwrap()
+    }
+
+    pub fn get_job(&self, id: Uuid) -> Option<Arc<RwLock<Job>>> {
+        let jobs = self.jobs();
+        let job = jobs.get(&id)?;
+        Some(job.clone())
     }
 
     pub fn add_job(&self, job: Job) -> Result<Uuid, String> {
@@ -399,7 +424,7 @@ impl SchedulerHandle {
         if jobs.contains_key(&job.id) {
             return Err(format!("Job with id {} already exists", job.id));
         }
-        jobs.insert(job.id, arc_mutex!(job));
+        jobs.insert(job.id, arc_rwlock!(job));
         drop(jobs);
 
         Self::trigger_job_hooks(self.jobs.clone(), &job_id, JobEvent::Scheduled(job_id));
@@ -424,7 +449,7 @@ impl SchedulerHandle {
 
         let jobs = self.jobs.read().unwrap();
         if let Some(job) = jobs.get(&id) {
-            let mut job = job.lock().unwrap();
+            let mut job = job.write().unwrap();
             *job = new_job;
             Ok(())
         } else {
