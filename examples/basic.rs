@@ -24,7 +24,7 @@ fn main() {
             JobBuilder::default()
                 .with_tag("repeating")
                 .repeating(Duration::seconds(5))
-                .build(|| info!("Repeating job")),
+                .build(|_, _| info!("Repeating job")),
         )
         .unwrap();
 
@@ -33,7 +33,7 @@ fn main() {
             JobBuilder::default()
                 .with_tag("once")
                 .once()
-                .build(|| info!("Once job")),
+                .build(|_, _| info!("Once job")),
         )
         .unwrap();
 
@@ -43,7 +43,7 @@ fn main() {
                 .with_tag("limited")
                 .limited(5, Duration::seconds(5))
                 .depends_on(once_job)
-                .build(|| info!("Limited job")),
+                .build(|_, _| info!("Limited job")),
         )
         .unwrap();
 
@@ -52,7 +52,7 @@ fn main() {
             JobBuilder::default()
                 .with_tag("singleton")
                 .signleton(Duration::seconds(5))
-                .build(|| info!("Signleton job")),
+                .build(|_, _| info!("Signleton job")),
         )
         .unwrap();
 
@@ -61,7 +61,7 @@ fn main() {
             JobBuilder::default()
                 .with_tag("failing")
                 .once()
-                .build(|| panic!("failing job")),
+                .build(|_, _| panic!("failing job")),
         )
         .unwrap();
 

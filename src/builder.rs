@@ -7,7 +7,7 @@ use uuid::Uuid;
 use crate::{
     arc_mutex_box,
     job::{Job, JobHooks},
-    scheduler::ScheduleMode,
+    scheduler::{ScheduleMode, SchedulerHandle},
 };
 
 pub struct JobBuilder {
@@ -107,7 +107,7 @@ impl JobBuilder {
         self
     }
 
-    pub fn build(self, task: impl Fn() + Send + Sync + 'static) -> Job {
+    pub fn build(self, task: impl Fn(Uuid, &SchedulerHandle) + Send + Sync + 'static) -> Job {
         let start_time = self
             .start_time
             .unwrap_or_else(|| self.timezone.from_utc_datetime(&Utc::now().naive_utc()));

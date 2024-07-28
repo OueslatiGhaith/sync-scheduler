@@ -7,9 +7,9 @@ use chrono::{DateTime, Duration};
 use chrono_tz::Tz;
 use uuid::Uuid;
 
-use crate::scheduler::ScheduleMode;
+use crate::scheduler::{ScheduleMode, SchedulerHandle};
 
-pub(crate) type JobTask = Arc<Mutex<Box<dyn Fn() + Send + Sync>>>;
+pub(crate) type JobTask = Arc<Mutex<Box<dyn Fn(Uuid, &SchedulerHandle) + Send + Sync>>>;
 
 pub struct Job {
     pub(crate) id: Uuid,
@@ -24,6 +24,12 @@ pub struct Job {
     pub(crate) hooks: JobHooks,
     pub(crate) dependencies: HashSet<Uuid>,
     pub(crate) completed: bool,
+}
+
+impl Job {
+    pub fn id(&self) -> Uuid {
+        self.id
+    }
 }
 
 #[derive(Clone)]

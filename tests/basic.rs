@@ -14,10 +14,10 @@ fn test_add_and_removeed_job() {
         let job = create_counter_job(counter.clone(), Duration::milliseconds(100));
 
         let job_id = scheduler.add_job(job).unwrap();
-        assert!(scheduler.jobs.read().unwrap().contains_key(&job_id));
+        assert!(scheduler.jobs().contains_key(&job_id));
 
         scheduler.remove_job(job_id);
-        assert!(!scheduler.jobs.read().unwrap().contains_key(&job_id));
+        assert!(!scheduler.jobs().contains_key(&job_id));
     });
 }
 
@@ -55,7 +55,7 @@ fn test_add_job_while_running() {
         let counter_clone = Arc::clone(&counter1);
         let job1 = JobBuilder::default()
             .repeating(Duration::milliseconds(100))
-            .build(move || {
+            .build(move |_, _| {
                 let since = now.elapsed();
                 println!("elapsed {:?}", since);
                 let mut count = counter_clone.lock().unwrap();

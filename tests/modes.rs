@@ -12,7 +12,7 @@ fn test_once_mode() {
     let counter = arc_mutex!(0);
     let counter_clone = Arc::clone(&counter);
 
-    let job = JobBuilder::default().once().build(move || {
+    let job = JobBuilder::default().once().build(move |_, _| {
         let mut count = counter_clone.lock().unwrap();
         *count += 1;
     });
@@ -48,7 +48,7 @@ fn test_limited_mode() {
 
     let job = JobBuilder::default()
         .limited(3, Duration::milliseconds(100))
-        .build(move || {
+        .build(move |_, _| {
             let mut count = counter_clone.lock().unwrap();
             *count += 1;
         });
@@ -70,7 +70,7 @@ fn test_singleton_mode() {
 
     let job = JobBuilder::default()
         .signleton(Duration::milliseconds(100))
-        .build(move || {
+        .build(move |_, _| {
             let mut running = is_running.lock().unwrap();
             assert!(!*running, "Job is already running");
             *running = true;

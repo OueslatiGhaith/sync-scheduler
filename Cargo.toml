@@ -13,3 +13,4 @@ uuid = { version = "1.10.0", features = ["v4", "fast-rng"] }
 
 [dev-dependencies]
 tracing-subscriber = "0.3.18"
+rand = "0.8.5"

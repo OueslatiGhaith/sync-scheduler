@@ -1,7 +1,6 @@
 use std::sync::Arc;
 
-use chrono::Duration;
-use common::{create_counter_job, create_scheduler};
+use common::create_scheduler;
 use rscron::{arc_mutex, JobBuilder};
 
 mod common;
@@ -15,7 +14,7 @@ fn test_simple_dependency() {
     let main_executed = arc_mutex!(false);
     let main_executed_clone = Arc::clone(&main_executed);
 
-    let dep_job = JobBuilder::default().once().build(move || {
+    let dep_job = JobBuilder::default().once().build(move |_, _| {
         std::thread::sleep(std::time::Duration::from_millis(100));
         *dep_completed_clone.lock().unwrap() = true;
     });
@@ -25,7 +24,7 @@ fn test_simple_dependency() {
     let main_job = JobBuilder::default()
         .once()
         .depends_on(dep_job_id)
-        .build(move || {
+        .build(move |_, _| {
             assert!(
                 *dep_completed_clone2.lock().unwrap(),
                 "Dependency should be completed before main job runs"
@@ -62,7 +61,7 @@ fn test_multiple_dependencies() {
         let job = JobBuilder::default()
             .with_tag("counter")
             .once()
-            .build(move || {
+            .build(move |_, _| {
                 let mut count = counter_clone.lock().unwrap();
                 *count += 1;
             });
@@ -76,7 +75,7 @@ fn test_multiple_dependencies() {
         .depends_on(dep_job_ids[0])
         .depends_on(dep_job_ids[1])
         .depends_on(dep_job_ids[2])
-        .build(move || {
+        .build(move |_, _| {
             for counter in &dep_counters {
                 assert!(
                     *counter.lock().unwrap() > 0,
@@ -109,7 +108,7 @@ fn test_dependency_chain() {
         if let Some(id) = prev_job_id {
             job_builder = job_builder.depends_on(id);
         }
-        let job = job_builder.build(move || {
+        let job = job_builder.build(move |_, _| {
             std::thread::sleep(std::time::Duration::from_millis(100));
             let mut count = counter.lock().unwrap();
             *count = i + 1;
