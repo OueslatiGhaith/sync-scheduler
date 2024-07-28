@@ -245,19 +245,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "rscron"
-version = "0.1.0"
-dependencies = [
- "chrono",
- "crossbeam-channel",
- "num_cpus",
- "rand",
- "tracing",
- "tracing-subscriber",
- "uuid",
-]
-
-[[package]]
 name = "sharded-slab"
 version = "0.1.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -281,6 +268,19 @@ dependencies = [
  "proc-macro2",
  "quote",
  "unicode-ident",
+]
+
+[[package]]
+name = "sync-scheduler"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "crossbeam-channel",
+ "num_cpus",
+ "rand",
+ "tracing",
+ "tracing-subscriber",
+ "uuid",
 ]
 
 [[package]]

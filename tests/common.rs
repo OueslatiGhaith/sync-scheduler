@@ -5,7 +5,7 @@ use std::{
 };
 
 use chrono::Utc;
-use rscron::{Job, JobBuilder, Scheduler, SchedulerConfig};
+use sync_scheduler::{Job, JobBuilder, Scheduler, SchedulerConfig};
 
 #[allow(unused)]
 pub const TEST_TIMEOUT: Duration = Duration::from_secs(5);

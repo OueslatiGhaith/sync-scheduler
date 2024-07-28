@@ -1,7 +1,7 @@
 use std::sync::{Arc, Mutex};
 
 use chrono::Duration;
-use rscron::{arc_mutex, Job, JobBuilder, Scheduler, SchedulerConfig};
+use sync_scheduler::{arc_mutex, Job, JobBuilder, Scheduler, SchedulerConfig};
 use tracing::{info, Level};
 use tracing_subscriber::FmtSubscriber;
 

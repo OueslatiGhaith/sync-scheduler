@@ -2,7 +2,7 @@ use std::thread;
 use std::time::Duration as StdDuration;
 
 use chrono::Duration;
-use rscron::{JobBuilder, Scheduler, SchedulerConfig};
+use sync_scheduler::{JobBuilder, Scheduler, SchedulerConfig};
 use tracing::{info, Level};
 use tracing_subscriber::FmtSubscriber;
 use uuid::Uuid;

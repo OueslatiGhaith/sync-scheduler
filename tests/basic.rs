@@ -2,7 +2,7 @@ use std::{sync::Arc, thread, time::Instant};
 
 use chrono::Duration;
 use common::{create_counter_job, create_scheduler, run_with_timeout, TEST_TIMEOUT};
-use rscron::{arc_mutex, JobBuilder};
+use sync_scheduler::{arc_mutex, JobBuilder};
 
 mod common;
 

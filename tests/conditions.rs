@@ -1,6 +1,6 @@
 use chrono::Duration;
 use common::create_scheduler;
-use rscron::JobBuilder;
+use sync_scheduler::JobBuilder;
 
 mod common;
 

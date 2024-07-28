@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use chrono::Utc;
 use common::create_scheduler;
-use rscron::{arc_mutex, JobBuilder};
+use sync_scheduler::{arc_mutex, JobBuilder};
 
 mod common;
 
