@@ -1,4 +1,4 @@
-use std::{collections::HashSet, error::Error, sync::Arc};
+use std::{any::Any, collections::HashSet, error::Error, sync::Arc};
 
 use chrono::{DateTime, Duration, TimeZone, Utc};
 use uuid::Uuid;
@@ -35,8 +35,6 @@ impl Default for JobBuilder {
                 on_complete: None,
                 on_fail: None,
                 on_panic: None,
-                on_schedule: None,
-                on_remove: None,
             },
         }
     }
@@ -75,36 +73,35 @@ impl JobBuilder {
         self
     }
 
-    pub fn on_start(mut self, on_start: impl Fn(Uuid) + Send + Sync + 'static) -> Self {
+    pub fn on_start(
+        mut self,
+        on_start: impl Fn(Uuid, &SchedulerHandle) + Send + Sync + 'static,
+    ) -> Self {
         self.hooks.on_start = Some(arc_mutex_box!(on_start));
         self
     }
 
-    pub fn on_complete(mut self, on_complete: impl Fn(Uuid) + Send + Sync + 'static) -> Self {
+    pub fn on_complete(
+        mut self,
+        on_complete: impl Fn(Uuid, &SchedulerHandle) + Send + Sync + 'static,
+    ) -> Self {
         self.hooks.on_complete = Some(arc_mutex_box!(on_complete));
         self
     }
 
     pub fn on_fail(
         mut self,
-        on_fail: impl Fn(Uuid, Box<dyn Error>) + Send + Sync + 'static,
+        on_fail: impl Fn(Uuid, &SchedulerHandle, Box<dyn Error>) + Send + Sync + 'static,
     ) -> Self {
         self.hooks.on_fail = Some(arc_mutex_box!(on_fail));
         self
     }
 
-    pub fn on_panic(mut self, on_panic: impl Fn(Uuid, String) + Send + Sync + 'static) -> Self {
+    pub fn on_panic(
+        mut self,
+        on_panic: impl Fn(Uuid, &SchedulerHandle, Box<dyn Any + Send>) + Send + Sync + 'static,
+    ) -> Self {
         self.hooks.on_panic = Some(arc_mutex_box!(on_panic));
-        self
-    }
-
-    pub fn on_schedule(mut self, on_schedule: impl Fn(Uuid) + Send + Sync + 'static) -> Self {
-        self.hooks.on_schedule = Some(arc_mutex_box!(on_schedule));
-        self
-    }
-
-    pub fn on_remove(mut self, on_remove: impl Fn(Uuid) + Send + Sync + 'static) -> Self {
-        self.hooks.on_remove = Some(arc_mutex_box!(on_remove));
         self
     }
 

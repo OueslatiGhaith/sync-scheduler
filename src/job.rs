@@ -1,4 +1,5 @@
 use std::{
+    any::Any,
     collections::HashSet,
     error::Error,
     sync::{Arc, Mutex},
@@ -71,18 +72,16 @@ pub enum JobEvent {
     Started(Uuid),
     Completed(Uuid),
     Failed(Uuid, Box<dyn Error>),
-    Panicked(Uuid, String),
-    Scheduled(Uuid),
-    Removed(Uuid),
+    Panicked(Uuid, Box<dyn Any + Send>),
 }
 
 type OptionArcMutex<T> = Option<Arc<Mutex<T>>>;
+type HookFn = dyn Fn(Uuid, &SchedulerHandle) + Send + Sync;
+type HookFnWithError<E> = dyn Fn(Uuid, &SchedulerHandle, Box<E>) + Send + Sync;
 
 pub struct JobHooks {
-    pub(crate) on_start: OptionArcMutex<dyn Fn(Uuid) + Send + Sync>,
-    pub(crate) on_complete: OptionArcMutex<dyn Fn(Uuid) + Send + Sync>,
-    pub(crate) on_fail: OptionArcMutex<dyn Fn(Uuid, Box<dyn Error>) + Send + Sync>,
-    pub(crate) on_panic: OptionArcMutex<dyn Fn(Uuid, String) + Send + Sync>,
-    pub(crate) on_schedule: OptionArcMutex<dyn Fn(Uuid) + Send + Sync>,
-    pub(crate) on_remove: OptionArcMutex<dyn Fn(Uuid) + Send + Sync>,
+    pub(crate) on_start: OptionArcMutex<HookFn>,
+    pub(crate) on_complete: OptionArcMutex<HookFn>,
+    pub(crate) on_fail: OptionArcMutex<HookFnWithError<dyn Error>>,
+    pub(crate) on_panic: OptionArcMutex<HookFnWithError<dyn Any + Send>>,
 }

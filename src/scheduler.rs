@@ -202,7 +202,12 @@ impl SchedulerHandle {
             if let Ok(job_exec) = job_receiver.recv_timeout(Duration::from_millis(100)) {
                 trace!("Executing job with id {}", job_exec.id);
 
-                Self::trigger_job_hooks(jobs.clone(), &job_exec.id, JobEvent::Started(job_exec.id));
+                Self::trigger_job_hooks(
+                    scheduler.clone(),
+                    jobs.clone(),
+                    &job_exec.id,
+                    JobEvent::Started(job_exec.id),
+                );
 
                 let task = job_exec.task.lock().unwrap();
                 #[allow(clippy::redundant_closure)]
@@ -221,6 +226,7 @@ impl SchedulerHandle {
                         Ok(_) => {
                             trace!("Job with id {} completed", job_exec.id);
                             Self::trigger_job_hooks(
+                                scheduler.clone(),
                                 jobs.clone(),
                                 &job_exec.id,
                                 JobEvent::Completed(job_exec.id),
@@ -229,29 +235,20 @@ impl SchedulerHandle {
                         Err(err) => {
                             trace!("Job with id {} failed", job_exec.id);
                             Self::trigger_job_hooks(
+                                scheduler.clone(),
                                 jobs.clone(),
                                 &job_exec.id,
                                 JobEvent::Failed(job_exec.id, err),
                             );
                         }
                     },
-                    Err(e) => {
-                        let error_msg = if let Some(s) = e.downcast_ref::<String>() {
-                            s.clone()
-                        } else if let Some(s) = e.downcast_ref::<&str>() {
-                            s.to_string()
-                        } else {
-                            "Unknown error".to_string()
-                        };
-                        trace!(
-                            "Job with id {} failed with error {}",
-                            job_exec.id,
-                            error_msg
-                        );
+                    Err(err) => {
+                        trace!("Job with id {} failed with error {:?}", job_exec.id, err);
                         Self::trigger_job_hooks(
+                            scheduler.clone(),
                             jobs.clone(),
                             &job_exec.id,
-                            JobEvent::Panicked(job_exec.id, error_msg),
+                            JobEvent::Panicked(job_exec.id, err),
                         );
                     }
                 }
@@ -376,6 +373,7 @@ impl SchedulerHandle {
     }
 
     fn trigger_job_hooks(
+        scheduler: Arc<SchedulerHandle>,
         jobs: Arc<RwLock<HashMap<Uuid, Arc<RwLock<Job>>>>>,
         job_id: &Uuid,
         event: JobEvent,
@@ -386,22 +384,18 @@ impl SchedulerHandle {
         if let Some(job) = jobs_read.get(job_id) {
             let mut job = job.write().unwrap();
             match event {
-                JobEvent::Started(uuid) => {
-                    // trigger_job_option!(job, on_start, (uuid))
-                    job.hooks.on_start.as_ref().map(|h| {
-                        let lock = h.lock().unwrap();
-                        (*lock)(uuid)
-                    })
+                JobEvent::Started(uuid) => trigger_job_option!(job, on_start, (uuid, &scheduler)),
+                JobEvent::Failed(uuid, err) => {
+                    trigger_job_option!(job, on_fail, (uuid, &scheduler, err))
                 }
-                JobEvent::Failed(uuid, err) => trigger_job_option!(job, on_fail, (uuid, err)),
-                JobEvent::Panicked(uuid, err) => trigger_job_option!(job, on_panic, (uuid, err)),
-                JobEvent::Scheduled(uuid) => trigger_job_option!(job, on_schedule, (uuid)),
-                JobEvent::Removed(uuid) => trigger_job_option!(job, on_remove, (uuid)),
+                JobEvent::Panicked(uuid, err) => {
+                    trigger_job_option!(job, on_panic, (uuid, &scheduler, err))
+                }
                 JobEvent::Completed(uuid) => {
                     if job.mode.should_complete(job.executions) {
                         job.completed = true;
                     }
-                    trigger_job_option!(job, on_complete, (uuid))
+                    trigger_job_option!(job, on_complete, (uuid, &scheduler))
                 }
             };
         }
@@ -438,7 +432,6 @@ impl SchedulerHandle {
         jobs.insert(job.id, arc_rwlock!(job));
         drop(jobs);
 
-        Self::trigger_job_hooks(self.jobs.clone(), &job_id, JobEvent::Scheduled(job_id));
         Ok(job_id)
     }
 
@@ -446,10 +439,7 @@ impl SchedulerHandle {
         trace!("Removing job with id {}", job_id);
 
         let mut jobs = self.jobs.write().unwrap();
-        if jobs.remove(&job_id).is_some() {
-            drop(jobs);
-            Self::trigger_job_hooks(self.jobs.clone(), &job_id, JobEvent::Removed(job_id));
-        }
+        jobs.remove(&job_id);
     }
 
     pub fn update_job(&self, id: Uuid, mut new_job: Job) -> Result<(), String> {
