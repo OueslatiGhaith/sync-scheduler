@@ -26,7 +26,7 @@ pub struct Job {
     pub(crate) start_time: DateTime<Utc>,
     pub(crate) hooks: JobHooks,
     pub(crate) dependencies: HashSet<Uuid>,
-    pub(crate) completed: bool,
+    pub(crate) is_completed: bool,
     pub(crate) conditions: Vec<JobCondition>,
 }
 
@@ -60,7 +60,7 @@ impl Job {
     }
 
     pub fn completed(&self) -> bool {
-        self.completed
+        self.is_completed
     }
 
     pub fn dependencies(&self) -> &HashSet<Uuid> {

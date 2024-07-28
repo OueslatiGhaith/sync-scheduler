@@ -158,6 +158,10 @@ impl Scheduler {
         }
     }
 
+    pub fn next_execution_time(&self, id: Uuid) -> Option<DateTime<Utc>> {
+        self.inner.next_execution_time(id)
+    }
+
     fn create_scheduler_context(&self) -> SchedulerContext {
         SchedulerContext {
             jobs: Arc::clone(&self.inner.jobs),
@@ -284,7 +288,7 @@ impl SchedulerHandle {
         let is_start_time = now >= job.start_time.with_timezone(&now.timezone());
         let is_interval_passed = now.signed_duration_since(job.last_scheduled) >= job.interval;
         let is_first_execution = job.executions == 0;
-        let is_completed = job.completed;
+        let is_completed = job.is_completed;
         let is_running = job.is_running;
         let are_dependencies_met = Self::are_dependencies_met(jobs, job);
         let are_conditions_met = job
@@ -341,7 +345,7 @@ impl SchedulerHandle {
         jobs_lock.retain(|_, job| {
             let job = job.read().unwrap();
             let retain = match job.mode {
-                ScheduleMode::Once => !job.completed,
+                ScheduleMode::Once => !job.is_completed,
                 ScheduleMode::Limited(limit) => job.executions < limit,
                 _ => true,
             };
@@ -393,7 +397,7 @@ impl SchedulerHandle {
                 }
                 JobEvent::Completed(uuid) => {
                     if job.mode.should_complete(job.executions) {
-                        job.completed = true;
+                        job.is_completed = true;
                     }
                     trigger_job_option!(job, on_complete, (uuid, &scheduler))
                 }
@@ -404,7 +408,7 @@ impl SchedulerHandle {
     fn are_dependencies_met(jobs: &HashMap<Uuid, Arc<RwLock<Job>>>, job: &Job) -> bool {
         job.dependencies.iter().all(|dep_id| {
             jobs.get(dep_id)
-                .map(|dep_job| dep_job.read().unwrap().completed)
+                .map(|dep_job| dep_job.read().unwrap().is_completed)
                 .unwrap_or(false)
         })
     }
@@ -475,5 +479,28 @@ impl SchedulerHandle {
         while let Some(thread) = worker_threads.pop() {
             thread.join().unwrap();
         }
+    }
+
+    pub fn next_execution_time(&self, id: Uuid) -> Option<DateTime<Utc>> {
+        let jobs = self.jobs.read().unwrap();
+        let job = jobs.get(&id)?;
+        let job = job.read().unwrap();
+
+        if job.is_completed {
+            return None;
+        }
+
+        let now = Utc::now();
+        let last_scheduled = job.last_scheduled;
+        let interval = job.interval;
+        let start_time = job.start_time;
+
+        let next_time = if job.executions == 0 {
+            start_time.max(now)
+        } else {
+            (last_scheduled + interval).max(now)
+        };
+
+        Some(next_time)
     }
 }

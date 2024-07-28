@@ -131,7 +131,7 @@ impl JobBuilder {
             start_time,
             hooks: self.hooks,
             dependencies: self.dependencies,
-            completed: false,
+            is_completed: false,
             conditions: self.conditions,
         }
     }
