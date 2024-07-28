@@ -7,6 +7,7 @@ edition = "2021"
 chrono = "0.4.38"
 crossbeam-channel = "0.5.13"
 num_cpus = "1.16.0"
+thiserror = "1.0.63"
 tracing = "0.1.40"
 uuid = { version = "1.10.0", features = ["v4", "fast-rng"] }
 

@@ -8,7 +8,7 @@ use std::{
 use crate::{
     arc_mutex, arc_rwlock,
     job::{Job, JobEvent, JobTask},
-    trigger_job_option,
+    trigger_job_option, Error,
 };
 use chrono::{DateTime, Utc};
 use crossbeam_channel::{unbounded, Receiver, Sender};
@@ -101,7 +101,7 @@ impl Scheduler {
         self.inner.get_job(id)
     }
 
-    pub fn add_job(&self, job: Job) -> Result<Uuid, String> {
+    pub fn add_job(&self, job: Job) -> Result<Uuid, Error> {
         self.inner.add_job(job)
     }
 
@@ -109,7 +109,7 @@ impl Scheduler {
         self.inner.remove_job(job_id)
     }
 
-    pub fn update_job(&self, id: Uuid, new_job: Job) -> Result<(), String> {
+    pub fn update_job(&self, id: Uuid, new_job: Job) -> Result<(), Error> {
         self.inner.update_job(id, new_job)
     }
 
@@ -425,13 +425,13 @@ impl SchedulerHandle {
         Some(job.clone())
     }
 
-    pub fn add_job(&self, job: Job) -> Result<Uuid, String> {
+    pub fn add_job(&self, job: Job) -> Result<Uuid, Error> {
         let job_id = job.id;
         trace!("Adding job with id {}", job_id);
 
         let mut jobs = self.jobs.write().unwrap();
         if jobs.contains_key(&job.id) {
-            return Err(format!("Job with id {} already exists", job.id));
+            return Err(Error::JobAlreadyExists(job.id));
         }
         jobs.insert(job.id, arc_rwlock!(job));
         drop(jobs);
@@ -446,7 +446,7 @@ impl SchedulerHandle {
         jobs.remove(&job_id);
     }
 
-    pub fn update_job(&self, id: Uuid, mut new_job: Job) -> Result<(), String> {
+    pub fn update_job(&self, id: Uuid, mut new_job: Job) -> Result<(), Error> {
         trace!("Updating job with id {}", id);
 
         // update the new job id to be the same as the old one
@@ -458,7 +458,7 @@ impl SchedulerHandle {
             *job = new_job;
             Ok(())
         } else {
-            Err(format!("Job with id {} not found", id))
+            Err(Error::JobNotFound(id))
         }
     }
 
