@@ -121,6 +121,26 @@ impl Scheduler {
 
         trace!("Starting scheduler");
 
+        #[cfg(feature = "deadlock_detection")]
+        {
+            std::thread::spawn(move || loop {
+                thread::sleep(Duration::from_secs(10));
+                let deadlocks = parking_lot::deadlock::check_deadlock();
+                if deadlocks.is_empty() {
+                    continue;
+                }
+
+                warn!("{} deadlocks detected", deadlocks.len());
+                for (i, threads) in deadlocks.iter().enumerate() {
+                    warn!("Deadlock #{}", i);
+                    for t in threads {
+                        warn!("Thread Id {:#?}", t.thread_id());
+                        warn!("{:#?}", t.backtrace());
+                    }
+                }
+            });
+        }
+
         let scheduler_context = self.create_scheduler_context();
 
         let mut scheduler_thread_guard = self.inner.scheduler_thread.lock();
