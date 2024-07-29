@@ -1,10 +1,7 @@
-use std::{
-    sync::{Arc, Mutex},
-    thread,
-    time::Duration,
-};
+use std::{sync::Arc, thread, time::Duration};
 
 use chrono::Utc;
+use parking_lot::Mutex;
 use sync_scheduler::{Job, JobBuilder, Scheduler, SchedulerConfig};
 
 #[allow(unused)]
@@ -21,7 +18,7 @@ pub fn create_counter_job(counter: Arc<Mutex<usize>>, interval: chrono::Duration
         .with_tag("counter")
         .repeating(interval)
         .build(move |_, _| {
-            let mut count = counter_clone.lock().unwrap();
+            let mut count = counter_clone.lock();
             *count += 1;
 
             Ok(())

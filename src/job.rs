@@ -1,11 +1,7 @@
-use std::{
-    any::Any,
-    collections::HashSet,
-    error::Error,
-    sync::{Arc, Mutex},
-};
+use std::{collections::HashSet, error::Error, sync::Arc};
 
 use chrono::{DateTime, Duration, Utc};
+use parking_lot::Mutex;
 use uuid::Uuid;
 
 use crate::scheduler::{ScheduleMode, SchedulerHandle};
@@ -72,7 +68,7 @@ pub enum JobEvent {
     Started(Uuid),
     Completed(Uuid),
     Failed(Uuid, Box<dyn Error>),
-    Panicked(Uuid, Box<dyn Any + Send>),
+    // Panicked(Uuid, Box<dyn Any + Send>),
 }
 
 type OptionArcMutex<T> = Option<Arc<Mutex<T>>>;
@@ -83,5 +79,5 @@ pub struct JobHooks {
     pub(crate) on_start: OptionArcMutex<HookFn>,
     pub(crate) on_complete: OptionArcMutex<HookFn>,
     pub(crate) on_fail: OptionArcMutex<HookFnWithError<dyn Error>>,
-    pub(crate) on_panic: OptionArcMutex<HookFnWithError<dyn Any + Send>>,
+    // pub(crate) on_panic: OptionArcMutex<HookFnWithError<dyn Any + Send>>,
 }

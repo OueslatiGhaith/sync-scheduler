@@ -1,9 +1,4 @@
-use std::{
-    collections::HashMap,
-    sync::{Arc, Mutex, RwLock},
-    thread,
-    time::Duration,
-};
+use std::{collections::HashMap, sync::Arc, thread, time::Duration};
 
 use crate::{
     arc_mutex, arc_rwlock,
@@ -12,6 +7,7 @@ use crate::{
 };
 use chrono::{DateTime, Utc};
 use crossbeam_channel::{unbounded, Receiver, Sender};
+use parking_lot::{Mutex, RwLock};
 use tracing::{trace, warn};
 use uuid::Uuid;
 
@@ -93,7 +89,7 @@ impl Scheduler {
         }
     }
 
-    pub fn jobs(&self) -> std::sync::RwLockReadGuard<HashMap<Uuid, Arc<RwLock<Job>>>> {
+    pub fn jobs(&self) -> parking_lot::RwLockReadGuard<HashMap<Uuid, Arc<RwLock<Job>>>> {
         self.inner.jobs()
     }
 
@@ -127,7 +123,7 @@ impl Scheduler {
 
         let scheduler_context = self.create_scheduler_context();
 
-        let mut scheduler_thread_guard = self.inner.scheduler_thread.lock().unwrap();
+        let mut scheduler_thread_guard = self.inner.scheduler_thread.lock();
         *scheduler_thread_guard = Some(thread::spawn(move || {
             trace!("Scheduler thread started");
             SchedulerHandle::run_scheduler_loop(scheduler_context);
@@ -135,7 +131,7 @@ impl Scheduler {
         }));
         drop(scheduler_thread_guard);
 
-        let mut worker_threads_guard = self.inner.worker_threads.lock().unwrap();
+        let mut worker_threads_guard = self.inner.worker_threads.lock();
         let scheduler = Arc::clone(&self.inner);
         for _ in 0..self.inner.config.thread_pool_size {
             let job_receiver = self.inner.job_receiver.clone();
@@ -176,7 +172,7 @@ impl Scheduler {
 
 impl SchedulerHandle {
     fn set_running_state(&self, state: bool) -> bool {
-        let mut running = self.running.write().unwrap();
+        let mut running = self.running.write();
         if *running == state {
             return false;
         }
@@ -185,7 +181,7 @@ impl SchedulerHandle {
     }
 
     fn run_scheduler_loop(context: SchedulerContext) {
-        while *context.running.read().unwrap() {
+        while *context.running.read() {
             let now = Utc::now();
             let jobs_to_schedule =
                 Self::identify_jobs_to_schedule(&context, now, context.scheduler.clone());
@@ -202,7 +198,7 @@ impl SchedulerHandle {
         running_jobs_count: Arc<RwLock<usize>>,
         scheduler: Arc<SchedulerHandle>,
     ) {
-        while *running.read().unwrap() {
+        while *running.read() {
             if let Ok(job_exec) = job_receiver.recv_timeout(Duration::from_millis(100)) {
                 trace!("Executing job with id {}", job_exec.id);
 
@@ -213,51 +209,73 @@ impl SchedulerHandle {
                     JobEvent::Started(job_exec.id),
                 );
 
-                let task = job_exec.task.lock().unwrap();
-                #[allow(clippy::redundant_closure)]
-                let result = std::panic::catch_unwind(|| task(job_exec.id, &scheduler));
+                let task = job_exec.task.lock();
+                // #[allow(clippy::redundant_closure)]
+                // let result = std::panic::catch_unwind(|| task(job_exec.id, &scheduler));
+                let result = task(job_exec.id, &scheduler);
 
-                let jobs_lock = jobs.read().unwrap();
+                let jobs_lock = jobs.read();
                 if let Some(job) = jobs_lock.get(&job_exec.id) {
-                    let mut job = job.write().unwrap();
+                    let mut job = job.write();
                     job.executions += 1;
                     job.is_running = false;
                 }
                 drop(jobs_lock);
 
                 match result {
-                    Ok(result) => match result {
-                        Ok(_) => {
-                            trace!("Job with id {} completed", job_exec.id);
-                            Self::trigger_job_hooks(
-                                scheduler.clone(),
-                                jobs.clone(),
-                                &job_exec.id,
-                                JobEvent::Completed(job_exec.id),
-                            );
-                        }
-                        Err(err) => {
-                            trace!("Job with id {} failed", job_exec.id);
-                            Self::trigger_job_hooks(
-                                scheduler.clone(),
-                                jobs.clone(),
-                                &job_exec.id,
-                                JobEvent::Failed(job_exec.id, err),
-                            );
-                        }
-                    },
-                    Err(err) => {
-                        trace!("Job with id {} failed with error {:?}", job_exec.id, err);
+                    Ok(_) => {
+                        trace!("Job with id {} completed", job_exec.id);
                         Self::trigger_job_hooks(
                             scheduler.clone(),
                             jobs.clone(),
                             &job_exec.id,
-                            JobEvent::Panicked(job_exec.id, err),
+                            JobEvent::Completed(job_exec.id),
+                        );
+                    }
+                    Err(err) => {
+                        trace!("Job with id {} failed", job_exec.id);
+                        Self::trigger_job_hooks(
+                            scheduler.clone(),
+                            jobs.clone(),
+                            &job_exec.id,
+                            JobEvent::Failed(job_exec.id, err),
                         );
                     }
                 }
 
-                let mut count = running_jobs_count.write().unwrap();
+                // match result {
+                //     Ok(result) => match result {
+                //         Ok(_) => {
+                //             trace!("Job with id {} completed", job_exec.id);
+                //             Self::trigger_job_hooks(
+                //                 scheduler.clone(),
+                //                 jobs.clone(),
+                //                 &job_exec.id,
+                //                 JobEvent::Completed(job_exec.id),
+                //             );
+                //         }
+                //         Err(err) => {
+                //             trace!("Job with id {} failed", job_exec.id);
+                //             Self::trigger_job_hooks(
+                //                 scheduler.clone(),
+                //                 jobs.clone(),
+                //                 &job_exec.id,
+                //                 JobEvent::Failed(job_exec.id, err),
+                //             );
+                //         }
+                //     },
+                //     Err(err) => {
+                //         trace!("Job with id {} failed with error {:?}", job_exec.id, err);
+                //         Self::trigger_job_hooks(
+                //             scheduler.clone(),
+                //             jobs.clone(),
+                //             &job_exec.id,
+                //             JobEvent::Panicked(job_exec.id, err),
+                //         );
+                //     }
+                // }
+
+                let mut count = running_jobs_count.write();
                 *count -= 1;
             }
         }
@@ -268,11 +286,11 @@ impl SchedulerHandle {
         now: DateTime<Utc>,
         scheduler: Arc<SchedulerHandle>,
     ) -> Vec<Uuid> {
-        let jobs_read = context.jobs.read().unwrap();
+        let jobs_read = context.jobs.read();
         jobs_read
             .iter()
             .filter(|(_, job)| {
-                let job = job.read().unwrap();
+                let job = job.read();
                 Self::should_schedule_job(&job, now, &jobs_read, scheduler.clone())
             })
             .map(|(id, _)| *id)
@@ -309,16 +327,16 @@ impl SchedulerHandle {
         jobs_to_schedule: Vec<Uuid>,
         now: DateTime<Utc>,
     ) {
-        let running_count = *context.running_jobs_count.read().unwrap();
+        let running_count = *context.running_jobs_count.read();
         let available_slots = context
             .config
             .max_concurrent_jobs
             .saturating_sub(running_count);
-        let jobs_read = context.jobs.read().unwrap();
+        let jobs_read = context.jobs.read();
 
         for id in jobs_to_schedule.into_iter().take(available_slots) {
             if let Some(job) = jobs_read.get(&id) {
-                let mut job = job.write().unwrap();
+                let mut job = job.write();
                 if Self::can_schedule_job(&job) {
                     Self::schedule_job(
                         &mut job,
@@ -341,9 +359,9 @@ impl SchedulerHandle {
     }
 
     fn remove_completed_jobs(context: &SchedulerContext) {
-        let mut jobs_lock = context.jobs.write().unwrap();
+        let mut jobs_lock = context.jobs.write();
         jobs_lock.retain(|_, job| {
-            let job = job.read().unwrap();
+            let job = job.read();
             let retain = match job.mode {
                 ScheduleMode::Once => !job.is_completed,
                 ScheduleMode::Limited(limit) => job.executions < limit,
@@ -371,7 +389,7 @@ impl SchedulerHandle {
         job.last_scheduled = now;
         job.is_running = true;
 
-        let mut count = running_jobs_count.write().unwrap();
+        let mut count = running_jobs_count.write();
         *count += 1;
         trace!("Job {} scheduled, Running jobs count: {}", job.id, *count);
     }
@@ -384,17 +402,17 @@ impl SchedulerHandle {
     ) {
         trace!("Triggering job hooks for job with id {}", job_id);
 
-        let jobs_read = jobs.read().unwrap();
+        let jobs_read = jobs.read();
         if let Some(job) = jobs_read.get(job_id) {
-            let mut job = job.write().unwrap();
+            let mut job = job.write();
             match event {
                 JobEvent::Started(uuid) => trigger_job_option!(job, on_start, (uuid, &scheduler)),
                 JobEvent::Failed(uuid, err) => {
                     trigger_job_option!(job, on_fail, (uuid, &scheduler, err))
                 }
-                JobEvent::Panicked(uuid, err) => {
-                    trigger_job_option!(job, on_panic, (uuid, &scheduler, err))
-                }
+                // JobEvent::Panicked(uuid, err) => {
+                //     trigger_job_option!(job, on_panic, (uuid, &scheduler, err))
+                // }
                 JobEvent::Completed(uuid) => {
                     if job.mode.should_complete(job.executions) {
                         job.is_completed = true;
@@ -408,15 +426,15 @@ impl SchedulerHandle {
     fn are_dependencies_met(jobs: &HashMap<Uuid, Arc<RwLock<Job>>>, job: &Job) -> bool {
         job.dependencies.iter().all(|dep_id| {
             jobs.get(dep_id)
-                .map(|dep_job| dep_job.read().unwrap().is_completed)
+                .map(|dep_job| dep_job.read().is_completed)
                 .unwrap_or(false)
         })
     }
 }
 
 impl SchedulerHandle {
-    pub fn jobs(&self) -> std::sync::RwLockReadGuard<HashMap<Uuid, Arc<RwLock<Job>>>> {
-        self.jobs.read().unwrap()
+    pub fn jobs(&self) -> parking_lot::RwLockReadGuard<HashMap<Uuid, Arc<RwLock<Job>>>> {
+        self.jobs.read()
     }
 
     pub fn get_job(&self, id: Uuid) -> Option<Arc<RwLock<Job>>> {
@@ -429,7 +447,7 @@ impl SchedulerHandle {
         let job_id = job.id;
         trace!("Adding job with id {}", job_id);
 
-        let mut jobs = self.jobs.write().unwrap();
+        let mut jobs = self.jobs.write();
         if jobs.contains_key(&job.id) {
             return Err(Error::JobAlreadyExists(job.id));
         }
@@ -442,7 +460,7 @@ impl SchedulerHandle {
     pub fn remove_job(&self, job_id: Uuid) {
         trace!("Removing job with id {}", job_id);
 
-        let mut jobs = self.jobs.write().unwrap();
+        let mut jobs = self.jobs.write();
         jobs.remove(&job_id);
     }
 
@@ -452,9 +470,9 @@ impl SchedulerHandle {
         // update the new job id to be the same as the old one
         new_job.id = id;
 
-        let jobs = self.jobs.read().unwrap();
+        let jobs = self.jobs.read();
         if let Some(job) = jobs.get(&id) {
-            let mut job = job.write().unwrap();
+            let mut job = job.write();
             *job = new_job;
             Ok(())
         } else {
@@ -465,26 +483,26 @@ impl SchedulerHandle {
     pub fn stop(&self) {
         trace!("Stopping scheduler");
 
-        let mut running = self.running.write().unwrap();
+        let mut running = self.running.write();
         *running = false;
         drop(running);
 
         // wait for scheduler thread to finish
-        if let Some(thread) = self.scheduler_thread.lock().unwrap().take() {
+        if let Some(thread) = self.scheduler_thread.lock().take() {
             thread.join().unwrap();
         }
 
         // wait for worker threads to finish
-        let mut worker_threads = self.worker_threads.lock().unwrap();
+        let mut worker_threads = self.worker_threads.lock();
         while let Some(thread) = worker_threads.pop() {
             thread.join().unwrap();
         }
     }
 
     pub fn next_execution_time(&self, id: Uuid) -> Option<DateTime<Utc>> {
-        let jobs = self.jobs.read().unwrap();
+        let jobs = self.jobs.read();
         let job = jobs.get(&id)?;
-        let job = job.read().unwrap();
+        let job = job.read();
 
         if job.is_completed {
             return None;
@@ -505,15 +523,15 @@ impl SchedulerHandle {
     }
 
     pub fn get_jobs_by_tag(&self, tag: &str) -> Vec<Uuid> {
-        let jobs = self.jobs.read().unwrap();
+        let jobs = self.jobs.read();
 
         jobs.values()
             .filter(|job| {
-                let job = job.read().unwrap();
+                let job = job.read();
                 job.tags.contains(&tag.to_string())
             })
             .map(|job| {
-                let job = job.read().unwrap();
+                let job = job.read();
                 job.id
             })
             .collect()

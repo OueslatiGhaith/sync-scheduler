@@ -13,7 +13,7 @@ fn test_once_mode() {
     let counter_clone = Arc::clone(&counter);
 
     let job = JobBuilder::default().once().build(move |_, _| {
-        let mut count = counter_clone.lock().unwrap();
+        let mut count = counter_clone.lock();
         *count += 1;
 
         Ok(())
@@ -24,7 +24,7 @@ fn test_once_mode() {
     std::thread::sleep(std::time::Duration::from_millis(500));
     scheduler.stop();
 
-    assert_eq!(*counter.lock().unwrap(), 1);
+    assert_eq!(*counter.lock(), 1);
 }
 
 #[test]
@@ -39,7 +39,7 @@ fn test_repeating_mode() {
     std::thread::sleep(std::time::Duration::from_millis(550));
     scheduler.stop();
 
-    assert!(*counter.lock().unwrap() >= 5);
+    assert!(*counter.lock() >= 5);
 }
 
 #[test]
@@ -51,7 +51,7 @@ fn test_limited_mode() {
     let job = JobBuilder::default()
         .limited(3, Duration::milliseconds(100))
         .build(move |_, _| {
-            let mut count = counter_clone.lock().unwrap();
+            let mut count = counter_clone.lock();
             *count += 1;
 
             Ok(())
@@ -62,5 +62,5 @@ fn test_limited_mode() {
     std::thread::sleep(std::time::Duration::from_secs(1));
     scheduler.stop();
 
-    assert_eq!(*counter.lock().unwrap(), 3);
+    assert_eq!(*counter.lock(), 3);
 }

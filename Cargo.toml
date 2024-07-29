@@ -3,10 +3,14 @@ name = "sync-scheduler"
 version = "0.1.0"
 edition = "2021"
 
+[features]
+deadlock_detection = ["parking_lot/deadlock_detection"]
+
 [dependencies]
 chrono = "0.4.38"
 crossbeam-channel = "0.5.13"
 num_cpus = "1.16.0"
+parking_lot = { version = "0.12.3" }
 thiserror = "1.0.63"
 tracing = "0.1.40"
 uuid = { version = "1.10.0", features = ["v4", "fast-rng"] }

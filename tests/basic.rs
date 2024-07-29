@@ -38,8 +38,8 @@ fn test_update_job() {
         thread::sleep(std::time::Duration::from_millis(250));
         scheduler.stop();
 
-        assert_eq!(*counter1.lock().unwrap(), 0);
-        assert!(*counter2.lock().unwrap() > 0);
+        assert_eq!(*counter1.lock(), 0);
+        assert!(*counter2.lock() > 0);
     });
 }
 
@@ -58,7 +58,7 @@ fn test_add_job_while_running() {
             .build(move |_, _| {
                 let since = now.elapsed();
                 println!("elapsed {:?}", since);
-                let mut count = counter_clone.lock().unwrap();
+                let mut count = counter_clone.lock();
                 *count += 1;
 
                 Ok(())
@@ -74,8 +74,8 @@ fn test_add_job_while_running() {
         thread::sleep(std::time::Duration::from_millis(250));
         scheduler.stop();
 
-        assert!(*counter1.lock().unwrap() > 1);
-        assert!(*counter2.lock().unwrap() > 0);
+        assert!(*counter1.lock() > 1);
+        assert!(*counter2.lock() > 0);
     });
 }
 
@@ -91,14 +91,14 @@ fn test_stop_and_restart() {
         thread::sleep(std::time::Duration::from_millis(200));
         scheduler.stop();
 
-        let count_after_first_run = *counter.lock().unwrap();
+        let count_after_first_run = *counter.lock();
         assert!(
             count_after_first_run > 0,
             "Job should have run at least once"
         );
 
         thread::sleep(std::time::Duration::from_millis(200));
-        let count_after_stop = *counter.lock().unwrap();
+        let count_after_stop = *counter.lock();
         assert_eq!(
             count_after_stop, count_after_first_run,
             "Counter should not increase while scheduler is stopped"
@@ -108,7 +108,7 @@ fn test_stop_and_restart() {
         thread::sleep(std::time::Duration::from_millis(200));
         scheduler.stop();
 
-        let count_after_second_run = *counter.lock().unwrap();
+        let count_after_second_run = *counter.lock();
         assert!(
             count_after_second_run > count_after_first_run,
             "Job should run again after restart"

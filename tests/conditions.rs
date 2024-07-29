@@ -11,7 +11,7 @@ fn test_job_with_single_condition() {
         .repeating(Duration::milliseconds(200))
         .add_condition(|uuid, scheduler| {
             let job = scheduler.get_job(uuid).unwrap();
-            let job_guard = job.read().unwrap();
+            let job_guard = job.read();
             job_guard.executions() < 1
         })
         .build(|uuid, _| {
@@ -26,6 +26,6 @@ fn test_job_with_single_condition() {
     scheduler.stop();
 
     let job = scheduler.get_job(job_id).unwrap();
-    let job_guard = job.read().unwrap();
+    let job_guard = job.read();
     assert!(job_guard.executions() == 1);
 }

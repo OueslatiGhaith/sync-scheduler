@@ -17,7 +17,7 @@ fn test_simple_dependency() {
 
     let dep_job = JobBuilder::default().once().build(move |_, _| {
         std::thread::sleep(std::time::Duration::from_millis(100));
-        *dep_completed_clone.lock().unwrap() = true;
+        *dep_completed_clone.lock() = true;
 
         Ok(())
     });
@@ -29,10 +29,10 @@ fn test_simple_dependency() {
         .depends_on(dep_job_id)
         .build(move |_, _| {
             assert!(
-                *dep_completed_clone2.lock().unwrap(),
+                *dep_completed_clone2.lock(),
                 "Dependency should be completed before main job runs"
             );
-            *main_executed_clone.lock().unwrap() = true;
+            *main_executed_clone.lock() = true;
 
             Ok(())
         });
@@ -43,13 +43,10 @@ fn test_simple_dependency() {
     scheduler.stop();
 
     assert!(
-        *dep_completed.lock().unwrap(),
+        *dep_completed.lock(),
         "Dependency job should have completed"
     );
-    assert!(
-        *main_executed.lock().unwrap(),
-        "Main job should have executed"
-    );
+    assert!(*main_executed.lock(), "Main job should have executed");
 }
 
 #[test]
@@ -69,7 +66,7 @@ fn test_multiple_dependencies() {
             .start_time(now)
             .once()
             .build(move |_, _| {
-                let mut count = counter_clone.lock().unwrap();
+                let mut count = counter_clone.lock();
                 *count += 1;
 
                 Ok(())
@@ -87,11 +84,11 @@ fn test_multiple_dependencies() {
         .build(move |_, _| {
             for counter in &dep_counters {
                 assert!(
-                    *counter.lock().unwrap() > 0,
+                    *counter.lock() > 0,
                     "All dependencies should have run at least once"
                 );
             }
-            *main_executed_clone.lock().unwrap() = true;
+            *main_executed_clone.lock() = true;
 
             Ok(())
         });
@@ -101,10 +98,7 @@ fn test_multiple_dependencies() {
     std::thread::sleep(std::time::Duration::from_millis(500));
     scheduler.stop();
 
-    assert!(
-        *main_executed.lock().unwrap(),
-        "Main job should have executed"
-    );
+    assert!(*main_executed.lock(), "Main job should have executed");
 }
 
 #[test]
@@ -121,7 +115,7 @@ fn test_dependency_chain() {
         }
         let job = job_builder.build(move |_, _| {
             std::thread::sleep(std::time::Duration::from_millis(100));
-            let mut count = counter.lock().unwrap();
+            let mut count = counter.lock();
             *count = i + 1;
 
             Ok(())
@@ -136,11 +130,6 @@ fn test_dependency_chain() {
     scheduler.stop();
 
     for (i, counter) in counters.iter().enumerate() {
-        assert_eq!(
-            *counter.lock().unwrap(),
-            i + 1,
-            "Job {} should have executed",
-            i + 1
-        );
+        assert_eq!(*counter.lock(), i + 1, "Job {} should have executed", i + 1);
     }
 }

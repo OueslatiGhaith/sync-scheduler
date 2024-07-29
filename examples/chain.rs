@@ -1,6 +1,7 @@
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use chrono::Duration;
+use parking_lot::Mutex;
 use sync_scheduler::{arc_mutex, Job, JobBuilder, Scheduler, SchedulerConfig};
 use tracing::{info, Level};
 use tracing_subscriber::FmtSubscriber;
@@ -11,7 +12,7 @@ fn make_repeating_job(update_counter: Arc<Mutex<usize>>) -> Job {
     JobBuilder::default()
         .repeating(Duration::seconds(5))
         .build(move |_, _| {
-            let counter = *update_counter.lock().unwrap();
+            let counter = *update_counter.lock();
             info!("[{rand_id}] repeating job updated {counter} times");
 
             Ok(())
@@ -43,7 +44,7 @@ fn main() {
 
                 // adding a new job to the scheduler
                 let once_job = JobBuilder::default().once().build(move |_, _| {
-                    let counter = *update_counter_clone2.lock().unwrap();
+                    let counter = *update_counter_clone2.lock();
                     info!("inner once job ran {counter} times");
 
                     Ok(())
@@ -51,7 +52,7 @@ fn main() {
                 scheduler.add_job(once_job).unwrap();
 
                 // updating an existing job
-                let mut counter_lock = update_counter_clone.lock().unwrap();
+                let mut counter_lock = update_counter_clone.lock();
                 *counter_lock += 1;
                 drop(counter_lock);
 

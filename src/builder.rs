@@ -1,4 +1,4 @@
-use std::{any::Any, collections::HashSet, error::Error, sync::Arc};
+use std::{collections::HashSet, error::Error, sync::Arc};
 
 use chrono::{DateTime, Duration, TimeZone, Utc};
 use uuid::Uuid;
@@ -34,7 +34,7 @@ impl Default for JobBuilder {
                 on_start: None,
                 on_complete: None,
                 on_fail: None,
-                on_panic: None,
+                // on_panic: None,
             },
         }
     }
@@ -97,13 +97,13 @@ impl JobBuilder {
         self
     }
 
-    pub fn on_panic(
-        mut self,
-        on_panic: impl Fn(Uuid, &SchedulerHandle, Box<dyn Any + Send>) + Send + Sync + 'static,
-    ) -> Self {
-        self.hooks.on_panic = Some(arc_mutex_box!(on_panic));
-        self
-    }
+    // pub fn on_panic(
+    //     mut self,
+    //     on_panic: impl Fn(Uuid, &SchedulerHandle, Box<dyn Any + Send>) + Send + Sync + 'static,
+    // ) -> Self {
+    //     self.hooks.on_panic = Some(arc_mutex_box!(on_panic));
+    //     self
+    // }
 
     pub fn add_condition(
         mut self,
